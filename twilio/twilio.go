@@ -21,8 +21,8 @@ type TwilioAPI struct {
 func NewTwilioAPI(myphone string) *TwilioAPI {
 	t := &TwilioAPI{
 		// Set account keys & information
-		AccountSid: "AC0f5b6938d0dd092d0823f8fbccda30f7",
-		AuthToken:  "3ef748eafff2c62e78843f462231e2e5",
+		AccountSid: "",
+		AuthToken:  "",
 		MsgData:    url.Values{},
 	}
 	t.UrlStr = "https://api.twilio.com/2010-04-01/Accounts/" + t.AccountSid + "/Messages.json"
