@@ -1,0 +1,85 @@
+<div class="row">
+    <div class="col-md-4 col-md-offset-4">
+    <div class="panel panel-primary">
+            <div class="panel-heading">
+            <h3 class="panel-title">Edit {{.SymbolCode}} Trade</h3>
+            </div>
+            <div class="panel-body">
+                    <form action = "/editapp" method="POST">
+                        <fieldset>
+                            <legend>Edit Trade</legend>
+                            <div class="form-group">
+                                <label for="disabletransaction">DisableTransaction</label>
+                                <input type="disabletransaction" name="disabletransaction" class="form-control"
+                                id="disabletransaction" value="{{.DisableTransaction}}">
+                            </div>
+                        <div class="form-group">
+                            <label for="leastprofitmargin">LeastProfitMargin</label>
+                            <input type="leastprofitmargin" name="leastprofitmargin" class="form-control"
+                            id="leastprofitmargin" value="{{.LeastProfitMargin}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="trailpoints">TrailPoints</label>
+                            <input type="trailpoints" name="trailpoints" class="form-control"
+                            id="trailpoints" value="{{.TrailPoints}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="hodler">Hodler</label>
+                            <input type="hodler" name="hodler" class="form-control"
+                            id="hodler" value="{{.Hodler}}">
+                        </div>
+                        <div class="form-group">
+                                <label for="suretradefactor">SureTradeFactor</label>
+                                <input type="suretradefactor" name="suretradefactor" class="form-control"
+                                id="suretradefactor" value="{{.SureTradeFactor}}">
+                            </div>
+                        <div class="form-group">
+                            <label for="messagefilter">MessageFilter</label>
+                            <input type="messagefilter" name="messagefilter" class="form-control"
+                            id="messagefilter" value="{{.MessageFilter}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="neverbought">NeverBought</label>
+                            <input type="neverbought" name="neverbought" class="form-control"
+                            id="neverbought" value="{{.NeverBought}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="neversold">NeverSold</label>
+                            <input type="neversold" name="neversold" class="form-control"
+                            id="neversold" value="{{.NeverSold}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="stoplostpoint">StopLostPoint</label>
+                            <input type="stoplostpoint" name="stoplostpoint" class="form-control"
+                            id="stoplostpoint" value="{{.StopLostPoint}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="secret">Secret</label>
+                            <input type="secret" name="secret" class="form-control"
+                            id="secret" value="{{.Secret}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="publickey">PublicKey</label>
+                            <input type="publickey" name="publickey" class="form-control"
+                            id="publickey" value="{{.PublicKey}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="quantityincrement">QuantityIncrement</label>
+                            <input type="quantityincrement" name="quantityincrement" class="form-control"
+                            id="quantityincrement" value="{{.QuantityIncrement}}">
+                        </div>
+                        <div class="form-group">
+                            <label for="goodbiz">Goodbiz</label>
+                            <input type="goodbiz" name="goodbiz" class="form-control"
+                            id="goodbiz" value="{{.GoodBiz}}">
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            Update Trade 
+                        </button>
+                        <input type="hidden" name="symbolcode" value="{{.SymbolCode}}">
+                        </fieldset>
+                    </form>        
+                    </div>
+    </div>
+    </div>
+</div>

@@ -1,0 +1,6 @@
+/*A table to display the trade parameters*/
+table {font-family: arial, sans-serif;border-collapse: collapse; width: 80%;}
+td, th {border: 1px solid #dddddd;text-align: left;padding: 8px;}
+tr:nth-child(even) {background-color: #dddddd;}
+/* Responsive layout - makes the two columns/boxes stack on top of each other instead of next to each other, on small screens */
+@media (max-width: 600px) {nav, article {width: 100%; height: auto;}}
