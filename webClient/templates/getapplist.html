@@ -1,0 +1,12 @@
+<div class="w3-container w3-cell w3-mobile" >
+  <ul>
+    {{range .Symbols}}      
+    <li><a onclick="WebSocketTest(`{{.}}`)">{{.}}</a></li>
+    {{end}}
+  </ul>
+</div>
+<div class="w3-container w3-cell w3-mobile" id="feeder">
+          
+</div>
+  
+  

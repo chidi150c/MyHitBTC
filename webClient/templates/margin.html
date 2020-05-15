@@ -1,0 +1,34 @@
+    
+    <div class="w3-container w3-cell w3-mobile" >
+        <div class="w3-row-padding" style="margin:0 -16px">
+            <div class="w3-twothird" >       
+                <div class="w3-bar w3-border w3-blue">
+                <div class="w3-bar-item">Grand Margin = {{.GrandMargin}} details below</div>
+                <div class="w3-bar-item w3-right"><a href="/deleteallapp?appid=``">Delete All</a></div>
+                </div>
+                <table class="w3-table w3-striped w3-white">
+                <tr>
+                    <td><i class="fa fa-user w3-text-blue w3-large"></i></td>
+                    <td><i>TRADED ASSET</i></td>
+                    <td><i>TOTAL TRADES</i></td>
+                    <td><i>PROFIT TRADES</i></td>
+                    <td><i>LOST TRADES</i></td>
+                    <td><i>MARGIN</i></td>
+                </tr>
+                    {{range .Margins}}
+                <tr>
+                    <td><i class="fa fa-user w3-text-blue w3-large"></i></td>
+                    <td><a onclick="WebSocketTest(`{{.SymbolCode}}`)">{{.SymbolCode}}</a></td>
+                    <td><i>{{.SuccessfulOrders}}</i></td>
+                    <td><i>{{.MadeProfitOrders}}</i></td>
+                    <td><i>{{.MadeLostOrders}}</i></td>
+                    <td><i>{{.Value}}</i></td>
+                </tr>
+                {{end}}
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="w3-cell w3-mobile" id="feeder">
+            
+    </div>      

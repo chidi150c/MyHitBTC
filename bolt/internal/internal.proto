@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package internal;
+
+message AppData {
+	uint64 ID = 1;
+	uint64 UsrID = 2;
+	string SessID = 3;
+	string PublicKey = 4;              
+	string Secret = 5;
+	string Host   = 6;
+	string SymbolCode = 7;
+	string Side   = 8;
+	string DisableTransaction = 9;
+	string MessageFilter = 10;
+	double MrktQuantity = 11;
+	double MrktBuyPrice  = 12;
+	double MrktSellPrice = 13;
+	string NeverBought        = 14;
+	string NeverSold  = 15;
+	double QuantityIncrement = 16;
+	string Message    = 17;
+	double TickSize     = 18;
+	double TakeLiquidityRate = 19;
+	string HeartbeatBuy       = 20;
+	string HeartbeatSell      = 21;
+	double SuccessfulOrders  = 22;
+	double MadeProfitOrders  = 23;
+	double MadeLostOrders    = 24;
+	double StopLostPoint  = 25;
+	string BaseCurrency       = 26;
+	string QuoteCurrency      = 27;
+	double TrailPoints  = 28;
+	double LeastProfitMargin = 29;
+	string SpinOutReason      = 30;
+	double SureTradeFactor   = 31;
+	string Hodler = 32;
+	double GoodBiz      = 33;
+	double AlternateData = 34;
+	double InstantProfit = 35;
+	double InstantLost  = 36;
+	double TotalProfit  = 37;
+	double TotalLost    = 38;
+	string PriceTradingStarted    = 39;
+	double NextMarketBuyPoint = 40;
+	double NextMarketSellPoint = 41;
+	double MainStartPointSell = 42;
+	double SoldQuantity = 43;
+	double BoughtQuantity    = 44;
+	double MainStartPointBuy = 45;
+	double MainQuantity = 46;
+	double NextStartPointNegPrice = 47;
+	double NextStartPointPrice = 48;
+	double ProfitPointFactor = 49;
+	double HodlerQuantity    = 50;
+	string ProfitPriceUsed    = 51;
+	double ProfitPrice  = 52;
+	repeated double PendingA = 53;
+	repeated double PendingB = 54;
+}
+message User {
+	uint64 ID =1;
+	string SessID =2;
+	map<string, uint64> ApIDs = 3;
+	string Username = 4;      
+	string Password = 5;
+	string Firstname = 6;
+	string Lastname = 7;
+	string Email = 8;
+	string ImageURL = 9;
+	string Token = 10;
+	string Url = 11;
+	int64 Expiry = 12;
+	string Host = 13;
+	string Level = 14;
+}
+
