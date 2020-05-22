@@ -654,7 +654,7 @@ func (h TradeHandler) userResetAppHandler(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	sync := make(chan bool)
+	sync := make(chan bool, 1)
 	id := r.FormValue("appid")
 	app, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[id])
 	if err != nil {

@@ -147,7 +147,7 @@ func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
 		if from == "sell" {
 			floatHolder, JackportErr = w.jackpotOrderQuantity(md, lastPrice, md.Data.GoodBiz, "AdaptAppSell")
 		}
-		md.Chans.MessageChan <- fmt.Sprintf("AdapApp %s %s Starting AdaptApp made at Side = %s from = %s base = %.8f jackpotQ = %.8f JackportErr = %s/n", md.Data.SymbolCode, w.user.Username, md.Data.Side, from, base, floatHolder, JackportErr)
+		md.Chans.MessageChan <- fmt.Sprintf("AdapApp %s %s Starting AdaptApp made at Side = %s from = %s base = %.8f jackpotQ = %.8f JackportErr = %v /n", md.Data.SymbolCode, w.user.Username, md.Data.Side, from, base, floatHolder, JackportErr)
 		md.Chans.SetParamChan <- SetParam{"", 0}
 		md.Chans.SetParamChan <- SetParam{"", 0}
 	}

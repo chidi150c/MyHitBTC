@@ -145,11 +145,11 @@ func (w WorkerAppService) AutoTradeManager(md *App, marginChan chan MarginVeh) (
 					close(myCloseDown)
 					close(returnChan)
 				}()
-			case mdChan <- AppVehicle{md, returnChan}:
+			case mdChan <- AppVehicle{md, returnChan}: //MyChan: partly used by handler to feed UI
 				<-returnChan
 			case marginChan <- MarginVeh{md.Data.ID, marginParam{md.Data.SymbolCode, md.Data.SuccessfulOrders, md.Data.MadeProfitOrders, md.Data.MadeLostOrders, md.Data.TotalLost + md.Data.TotalProfit}}:
 			case md.Data.Message = <-messageChan:
-				if (strings.Contains(md.Data.Message, md.Data.MessageFilter) && md.Data.MessageFilter != "") || strings.Contains(md.Data.Message, "made") || strings.Contains(md.Data.Message, "success:") || strings.Contains(md.Data.Message, "started") {
+				if (strings.Contains(md.Data.Message, md.Data.MessageFilter) && md.Data.MessageFilter != "") || strings.Contains(md.Data.Message, "made") || strings.Contains(md.Data.Message, "Reset Authorized") || strings.Contains(md.Data.Message, "success:") || strings.Contains(md.Data.Message, "started") {
 					log.Print(md.Data.Message)
 				}
 			case data = <-md.Chans.SetParamChan:
@@ -287,13 +287,16 @@ func (w WorkerAppService) ResetApp(md *App, rType string, sync chan bool) error 
 	user, err := w.session.Authenticate()
 	if err != nil {
 		log.Printf("%v", err)
+		sync <- false
 		return err
 	}
 	if user.ApIDs[md.Data.SymbolCode] != md.Data.ID {
+		sync <- false
 		return errors.New("UnAuthorized")
 	}
 	respChan := make(chan bool)
 	md.Chans.MarketResetInfoChan <- respChan
+	md.Chans.MessageChan <- fmt.Sprintf("ResetApp: %s: %s: Reset Authorized | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 	s := md.Data.SymbolCode
 	md.Chans.MessageChan <- fmt.Sprintf("ResetApp: %s: %s: Resetting AdaptApp params .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 	<-respChan
@@ -350,7 +353,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 	prevBuyLPoint = math.MaxFloat64
 	i := 0.0
 	j := 0.0
-	sync := make(chan bool)
+	sync := make(chan bool, 1)
 	for {
 		select {
 		case <-md.Chans.CloseDown:
@@ -798,7 +801,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 		err                                                   error
 		nsp                                                   priceTradingVehicle
 	)
-	sync := make(chan bool)
+	sync := make(chan bool, 1)
 	if md.Data.Side == "buy" {
 		md.Data.PriceTradingStarted = "sell"
 		defer func() {
