@@ -833,12 +833,10 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 				md.Data.NextStartPointPrice = nsp.LastPrice
 				md.Data.MainQuantity += nsp.PriceTradingStartQuantity
 				md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: md.Data.MainQuantity is updated to %.8f | nextStartPoint updated to %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, nsp.LastPrice, md.Data.DisableTransaction)
-
 				continue
 			default:
 				if strings.Contains(md.Data.DisableTransaction, "price") || strings.Contains(md.Data.DisableTransaction, "all trades") {
 					time.Sleep(time.Second * 300)
-
 					continue
 				}
 				profitPoint = md.Data.MainStartPointSell * md.Data.LeastProfitMargin
@@ -943,9 +941,10 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 							<-sync
 							continue
 						}
-
+						time.Sleep(time.Second * 2)
+						continue
 					}
-					//PTSell Negative Buy investment
+				//PTSell Negative Buy investment
 				} else if (md.Data.MainStartPointSell >= md.Data.NextStartPointPrice) && (math.Abs(md.Data.NextStartPointPrice-lastPrice) > profitPoint) && (md.Data.NextStartPointPrice > lastPrice) {
 					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative Buy ProfitPoint crossed, now to try buy of more bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					profitOrLost = ((lastPrice + md.Data.TickSize*2) - md.Data.NextStartPointPrice) * md.Data.MainQuantity * (1.0 - md.Data.TakeLiquidityRate)
@@ -1006,7 +1005,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 								continue
 							}
 						}
-						//for HODLERS
+					//for HODLERS
 					} else if md.Data.MainStartPointSell > lastPrice {
 						profitOrLost = (md.Data.NextStartPointPrice - (lastPrice + md.Data.TickSize*2)) * md.Data.SoldQuantity * (1.0 - md.Data.TakeLiquidityRate)
 						if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
