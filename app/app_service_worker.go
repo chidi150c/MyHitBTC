@@ -149,7 +149,7 @@ func (w WorkerAppService) AutoTradeManager(md *App, marginChan chan MarginVeh) (
 				<-returnChan
 			case marginChan <- MarginVeh{md.Data.ID, marginParam{md.Data.SymbolCode, md.Data.SuccessfulOrders, md.Data.MadeProfitOrders, md.Data.MadeLostOrders, md.Data.TotalLost + md.Data.TotalProfit}}:
 			case md.Data.Message = <-messageChan:
-				if (strings.Contains(md.Data.Message, md.Data.MessageFilter) && md.Data.MessageFilter != "") || strings.Contains(md.Data.Message, "made") || strings.Contains(md.Data.Message, "Reset Authorized") || strings.Contains(md.Data.Message, "success:") || strings.Contains(md.Data.Message, "started") {
+				if (strings.Contains(md.Data.Message, md.Data.MessageFilter) && md.Data.MessageFilter != "") || strings.Contains(md.Data.Message, "Reset Authorized") || strings.Contains(md.Data.Message, "OrderedAmt") || strings.Contains(md.Data.Message, "started") {
 					log.Print(md.Data.Message)
 				}
 			case data = <-md.Chans.SetParamChan:
@@ -345,7 +345,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 		err                                                            error
 		e                                                              EmaData
 		ErrorMessage, MarketStatus, stringHolder                       string
-		ordrStatus, profitOrLostStatus, pastNeverSold, pastNeverBought string
+		ordrStatus, pastNeverSold, pastNeverBought 					   string
 		wait                                                           time.Duration
 	)
 	gapPrice = md.Data.TickSize * md.Data.TrailPoints //to clear error region
@@ -358,11 +358,11 @@ func (w WorkerAppService) marketTrading(md *App) {
 		select {
 		case <-md.Chans.CloseDown:
 			if !isClosed(w.profitPriceResetAChan) {
-				md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: profitPriceFunc Shuting Down A: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s profitPriceFunc Shuting Down A: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				w.profitPriceResetAChan <- false
 			}
 			if !isClosed(w.profitPriceResetBChan) {
-				md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: profitPriceFunc Shuting Down B: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s profitPriceFunc Shuting Down B: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				w.profitPriceResetBChan <- false
 			}
 			if !isClosed(md.Chans.StopSellPriceTradingChan) {
@@ -381,7 +381,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 					continue
 				}
 			}
-			md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: App Shuting Down: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s App Shuting Down: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 			return
 		case respChan = <-md.Chans.MarketResetInfoChan:
 			md.Data.ProfitPrice = 0.0
@@ -419,7 +419,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 			tkr, err = w.API.GetTicker(md.Data.SymbolCode)
 			if err != nil {
 				ErrorMessage = fmt.Sprintf("%v", err)
-				md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: Unable to get Ticker | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s Unable to get Ticker | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				if strings.Contains(ErrorMessage, "502 Bad Gateway") || strings.Contains(ErrorMessage, "503 Service Unavailable") || strings.Contains(ErrorMessage, "500 Internal Server") || strings.Contains(ErrorMessage, "Exchange temporary closed") {
 					time.Sleep(time.Millisecond * time.Duration(30000+<-w.Rand800))
 				} else {
@@ -459,7 +459,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 				prevBuyLPoint = md.Data.StopLostPoint
 			}
 		} else if md.Data.StopLostPoint == 0.0 {
-			md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: GlobalInfor: Market not decided, ema5515Diff = %.8f: gapPrice = %.8f: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, ema5515Diff, gapPrice, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s GlobalInfor: Market not decided, ema5515Diff = %.8f: gapPrice = %.8f: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, ema5515Diff, gapPrice, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			prevSellLPoint = 0.0
@@ -467,7 +467,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 			gapPrice = md.Data.TickSize * md.Data.TrailPoints //to clear error region
 			continue
 		} else {
-			md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: GlobalInfor: Market not decided, ema5515Diff = %.8f: gapPrice = %.8f: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, ema5515Diff, gapPrice, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s GlobalInfor: Market not decided, ema5515Diff = %.8f: gapPrice = %.8f: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, ema5515Diff, gapPrice, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			gapPrice = md.Data.TickSize * md.Data.TrailPoints //to clear error region
@@ -475,7 +475,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 		}
 
 		//General message
-		md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: GlobalInfo  before market decission: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
+		md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s GlobalInfo  before market decission: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
 		md.Chans.SetParamChan <- SetParam{"", 0}
 		md.Chans.SetParamChan <- SetParam{"", 0}
 
@@ -487,14 +487,14 @@ func (w WorkerAppService) marketTrading(md *App) {
 			md.Chans.SetParamChan <- SetParam{"Side", "buy"}
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Chans.SetParamChan <- SetParam{"", 0}
-			md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: go ahead buy StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s go ahead buy StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			//Market Up but StopLostPoint is Reached
 			if (lastPrice < md.Data.StopLostPoint) && (md.Data.StopLostPoint > 0.0 && md.Data.StopLostPoint < math.MaxFloat64) { //has crossed stop lost so sell
 				//Market: Up: StopLost crossing: Don't Sell Below NextMarketSellPointflter 1
 				if (md.Data.NextMarketSellPoint > lastPrice) && (md.Data.NextMarketSellPoint > 0.0 && md.Data.NextMarketSellPoint < math.MaxFloat64) {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: StopLost %.8f crossing: Don't Sell Below NextMarketSellPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketSellPoint, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s StopLost %.8f crossing: Don't Sell Below NextMarketSellPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketSellPoint, lastPrice, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					wait = 3000
@@ -503,7 +503,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 				}
 				//filter4
 				if sureTradeMUp < md.Data.SureTradeFactor {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: SreTradeFactor %.2f not reached | StopLost is %.8f  at NextMarketSellPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.SureTradeFactor, md.Data.StopLostPoint, md.Data.NextMarketSellPoint, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s SureTradeFactor %.2f not reached | StopLost is %.8f  at NextMarketSellPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.SureTradeFactor, md.Data.StopLostPoint, md.Data.NextMarketSellPoint, lastPrice, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					sureTradeMUp++
@@ -514,7 +514,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 				md.Chans.SetParamChan <- SetParam{"Side", "sell"}
 				md.Chans.SetParamChan <- SetParam{"", 0}
 				md.Chans.SetParamChan <- SetParam{"", 0}
-				md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: StoplostCross Side is sell at lastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s StopLostCross Side is sell at lastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
 			}
 		} else if ema15Market < ema55Market { //market is going down !!!!!!!!!!!!!!!!!!!
 			MarketStatus = "Down"
@@ -523,19 +523,19 @@ func (w WorkerAppService) marketTrading(md *App) {
 			md.Chans.SetParamChan <- SetParam{"Side", "sell"}
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Chans.SetParamChan <- SetParam{"", 0}
-			md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: go ahead sell StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s go ahead sell StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
 			//Market Down: but stoplostPoint is Reached
 			if (lastPrice > md.Data.StopLostPoint) && (md.Data.StopLostPoint > 0.0 && md.Data.StopLostPoint < math.MaxFloat64) { //has crossed stop lost
 				//filter 2
 				if (md.Data.NextMarketBuyPoint < lastPrice) && (md.Data.NextMarketBuyPoint > 0.0 && md.Data.NextMarketBuyPoint < math.MaxFloat64) {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: StopLost %.8f crossing: Don't Buy above NextMarketBuyPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s StopLost %.8f crossing: Don't Buy above NextMarketBuyPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, lastPrice, md.Data.DisableTransaction)
 					wait = 3000
 					waiting(wait)
 					continue
 				}
 				//filter4
 				if sureTradeMDown < md.Data.SureTradeFactor {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: SreTradeFactor %.2f not reached | StopLost is %.8f  at NextMarketSellPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.SureTradeFactor, md.Data.StopLostPoint, md.Data.NextMarketSellPoint, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s SureTradeFactor %.2f not reached | StopLost is %.8f  at NextMarketSellPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.SureTradeFactor, md.Data.StopLostPoint, md.Data.NextMarketSellPoint, lastPrice, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					sureTradeMDown++
@@ -546,18 +546,18 @@ func (w WorkerAppService) marketTrading(md *App) {
 				md.Chans.SetParamChan <- SetParam{"Side", "buy"}
 				md.Chans.SetParamChan <- SetParam{"", 0}
 				md.Chans.SetParamChan <- SetParam{"", 0}
-				md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: StoplostCross Side is buy at lastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s StopLostCross Side is buy at lastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f /n", MarketStatus, md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint)
 			}
 		}
 
 		//General message
-		md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: GlobalInfo after market decision: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
+		md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s GlobalInfo after market decision: Side = %s LastPrice = %.8f StopLostPoint = %.8f md.Data.NextMarketBuyPoint = %.8f and md.Data.NextMarketSellPoint = %.8f NeverSold = %s NeverBought = %s /n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, lastPrice, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, md.Data.NextMarketSellPoint, md.Data.NeverSold, md.Data.NeverBought)
 		md.Chans.SetParamChan <- SetParam{"", 0}
 		md.Chans.SetParamChan <- SetParam{"", 0}
 
 		//SellBuyfilter
 		if ((md.Data.MrktSellPrice > 0.0 && md.Data.MrktSellPrice < math.MaxFloat64) && md.Data.Side == "buy") || ((md.Data.MrktBuyPrice > 0.0 && md.Data.MrktBuyPrice < math.MaxFloat64) && md.Data.Side == "sell") { //it bought before now sell higher
-			md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s:  Entered sellBuyfilter with %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.DisableTransaction)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s Entered sellBuyfilter with %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.DisableTransaction)
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			if md.Data.Side == "sell" {
@@ -635,7 +635,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 		}
 
 		if md.Data.Side == "buy" || md.Data.Side == "sell" {
-			md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s:  Entered jackpot!!! with %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.DisableTransaction)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s Entered jackpot!!! with %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.DisableTransaction)
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			//Mareket Decieded to make Order
@@ -646,14 +646,14 @@ func (w WorkerAppService) marketTrading(md *App) {
 			if err != nil {
 				//MarKrt Decieded failed jackport
 				if strings.Contains(fmt.Sprintf("%v", err), "below QuantityIncrement") {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: Unable to get %s jackpot: The balance was below QuantityIncrement | profitOrLost = %.8f NeverBought = %s NeverSold = %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, profitOrLost, md.Data.NeverBought, md.Data.NeverSold, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s Unable to get %s jackpot: The balance was below QuantityIncrement | profitOrLost = %.8f NeverBought = %s NeverSold = %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, profitOrLost, md.Data.NeverBought, md.Data.NeverSold, md.Data.DisableTransaction)
 				} else {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: Unable to get %s %.8f jackpot: unable to connect to exchange | profitOrLost = %.8f NeverBought = %s NeverSold = %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, floatHolder, profitOrLost, md.Data.NeverBought, md.Data.NeverSold, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s Unable to get %s %.8f jackpot: unable to connect to exchange | profitOrLost = %.8f NeverBought = %s NeverSold = %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, floatHolder, profitOrLost, md.Data.NeverBought, md.Data.NeverSold, md.Data.DisableTransaction)
 				}
 				time.Sleep(time.Millisecond * 30000)
 				continue
 			} else {
-				md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: Able to get %s %.8f jackpot: | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, floatHolder, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s Able to get %s %.8f jackpot: | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, floatHolder, md.Data.DisableTransaction)
 				md.Chans.SetParamChan <- SetParam{"", 0}
 				md.Chans.SetParamChan <- SetParam{"", 0}
 				if (profitOrLost > 0.0 && profitOrLost < math.MaxFloat64) && (md.Data.NeverBought == "yes" && MarketStatus == "Up") {
@@ -680,7 +680,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 				ordrStatus, _, floatHolder, err = w.placeOrder(md, md.Data.MrktQuantity, lastPrice, "MarketTrading")
 				//Martket Decieded order failied
 				if err != nil || !strings.Contains(ordrStatus, "filled") {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: Place %s order error: | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s Place %s order error: | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					wait = 3000
@@ -694,7 +694,6 @@ func (w WorkerAppService) marketTrading(md *App) {
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 					}
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: Place order success: %s %.8f amount at %.8f %s | NeverSold = %s NeverBought = %s | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.MrktQuantity, lastPrice, ordrStatus, md.Data.NeverSold, md.Data.NeverBought, md.Data.DisableTransaction)
 					//Market: Decieded: Successful Buy Order
 					if md.Data.Side == "buy" {
 						pastNeverBought = md.Data.NeverBought
@@ -702,20 +701,11 @@ func (w WorkerAppService) marketTrading(md *App) {
 						md.Chans.SetParamChan <- SetParam{"NeverSold", "yes"}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
-						if profitOrLost > 0.0 {
-							profitOrLostStatus = "Profit"
-						} else if profitOrLost < 0.0 {
-							profitOrLostStatus = "Lost"
-						} else if profitOrLost == 0.0 { //profitOrlost is same
-							profitOrLostStatus = "same"
-						} else {
-							panic("same can not get here")
-						}
 						md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 						md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
-						md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: made %s %.8f: Total Profit as at now is %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s TransactType %s OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.MrktQuantity, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 						if !isClosed(md.Chans.StopBuyPriceTradingChan) || (pastNeverBought == "yes") {
 							prevSellLPoint = 0.0
 							prevBuyLPoint = math.MaxFloat64
@@ -744,20 +734,11 @@ func (w WorkerAppService) marketTrading(md *App) {
 						md.Chans.SetParamChan <- SetParam{"NeverBought", "yes"}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
-						if profitOrLost > 0.0 {
-							profitOrLostStatus = "Profit"
-						} else if profitOrLost < 0.0 {
-							profitOrLostStatus = "Lost"
-						} else if i >= 1.0 && (profitOrLost == 0.0) { //profitOrlost is same
-							profitOrLostStatus = "same"
-						} else { //profitOrLost is same
-							panic("it should not get here proftOrLost is same")
-						}
 						md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 						md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
-						md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: %s: made %s %.8f: Total Profit as at now is %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s TransactType %s OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, md.Data.Side, md.Data.MrktQuantity, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 						if !isClosed(md.Chans.StopSellPriceTradingChan) || (pastNeverSold == "yes") {
 							prevSellLPoint = 0.0
 							prevBuyLPoint = math.MaxFloat64
@@ -794,10 +775,9 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 	var (
 		tkr                                                   *api.Ticker
 		ErrorMessage, ordrStatus                              string
-		profitOrLost, floatHolder, floatHolder2, floatHolder3 float64
+		profitOrLost, floatHolder, floatHolder3 float64
 		lastPrice                                             float64
 		profitPoint                                           float64
-		profitOrLostStatus                                    string
 		err                                                   error
 		nsp                                                   priceTradingVehicle
 	)
@@ -805,7 +785,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 	if md.Data.Side == "buy" {
 		md.Data.PriceTradingStarted = "sell"
 		defer func() {
-			md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Ended the sell of %.8f %s asset bought at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointSell, md.Data.DisableTransaction)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Ended the sell of %.8f %s asset bought at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointSell, md.Data.DisableTransaction)
 			md.Data.PriceTradingStarted = ""
 		}()
 		if !md.FromVersionUpdate {
@@ -814,7 +794,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 			md.Data.NextStartPointPrice = md.Data.MainStartPointSell
 			md.Data.HodlerQuantity = 0.0
 			if !isClosed(w.profitPriceResetAChan) {
-				md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Resetting profitPrice pendingA .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Resetting profitPrice pendingA .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				w.profitPriceResetAChan <- true
 			}
 			md.FromVersionUpdate = false
@@ -823,16 +803,16 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 		for {
 			select {
 			case <-md.Chans.StopSellPriceTradingChan:
-				md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: App Shuting Down: Ended the sell of bought asset approptly !!!!! | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s App Shuting Down: Ended the sell of bought asset approptly !!!!! | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				if !isClosed(w.profitPriceResetAChan) {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: Resetting profitPrice pendingA .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s Resetting profitPrice pendingA .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 					w.profitPriceResetAChan <- true
 				}
 				return
 			case nsp = <-md.Chans.PriceTradingNextStartChan:
 				md.Data.NextStartPointPrice = nsp.LastPrice
 				md.Data.MainQuantity += nsp.PriceTradingStartQuantity
-				md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: md.Data.MainQuantity is updated to %.8f | nextStartPoint updated to %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, nsp.LastPrice, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s md.Data.MainQuantity is updated to %.8f | nextStartPoint updated to %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, nsp.LastPrice, md.Data.DisableTransaction)
 				continue
 			default:
 				if strings.Contains(md.Data.DisableTransaction, "price") || strings.Contains(md.Data.DisableTransaction, "all trades") {
@@ -844,7 +824,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					tkr, err = w.API.GetTicker(md.Data.SymbolCode)
 					if err != nil {
 						ErrorMessage = fmt.Sprintf("%v", err)
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Unable to get Ticker | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Unable to get Ticker | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						if strings.Contains(ErrorMessage, "502 Bad Gateway") || strings.Contains(ErrorMessage, "503 Service Unavailable") || strings.Contains(ErrorMessage, "500 Internal Server") || strings.Contains(ErrorMessage, "Exchange temporary closed") {
 							time.Sleep(time.Millisecond * time.Duration(20000+<-w.Rand800))
 						} else {
@@ -859,36 +839,36 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					md.Chans.SetParamChan <- SetParam{"NeverSold", "no more aply"}
 					md.Chans.SetParamChan <- SetParam{"MrktBuyPrice", lastPrice}
 					md.Chans.SetParamChan <- SetParam{"", 0}
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: started to sell %.8f %s asset bought at %.8f | md.Data.NeverSold changed to %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointSell, md.Data.NeverSold, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s started to sell %.8f %s asset bought at %.8f | md.Data.NeverSold changed to %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointSell, md.Data.NeverSold, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					toChange = ""
 					i++
 				} else if i == 0 {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: started to sell %.8f %s asset bought at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointSell, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s started to sell %.8f %s asset bought at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointSell, md.Data.DisableTransaction)
 					i++
 				}
 				//PTSell Sell profit/investment
 				if (math.Abs(md.Data.NextStartPointPrice-lastPrice) > profitPoint) && (md.Data.NextStartPointPrice < lastPrice) && (md.Data.MainStartPointSell < lastPrice) {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Sell ProfitPoint crossed, now to try sell of bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Sell ProfitPoint crossed, now to try sell of bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.MainStartPointSell) * md.Data.QuantityIncrement * (1.0 - md.Data.TakeLiquidityRate)
 					if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						continue
 					}
 					ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingSell")
 					if err != nil || !strings.Contains(ordrStatus, "filled") {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 						if ordrStatus == "Insufficient funds" {
 							floatHolder, err = w.jackpotOrderQuantity(md, lastPrice, md.Data.GoodBiz, "PriceTradingSell")
 							if err == nil {
 								profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.MainStartPointSell) * floatHolder * (1.0 - md.Data.TakeLiquidityRate)
 								if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 									continue
 								}
 								ordrStatus, _, floatHolder3, err = w.placeOrder(md, floatHolder, lastPrice, "PriceTradingSell")
 								if err != nil || !strings.Contains(ordrStatus, "filled") {
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Still Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Still Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 									time.Sleep(time.Second * 20)
 									continue
 								}
@@ -899,16 +879,14 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 								md.Chans.SetParamChan <- SetParam{"", 0}
 								md.Chans.SetParamChan <- SetParam{"", 0}
 								md.Data.NextStartPointPrice = lastPrice
-								md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Place order success: sell %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
-								if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {
-									profitOrLostStatus = "Profit"
+								if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {									
 									md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 									md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 									md.Chans.SetParamChan <- SetParam{"", 0}
 									md.Chans.SetParamChan <- SetParam{"", 0}
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: made %s %.8f: Total Profit as at now is %.8f MainQuantity remaining %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 									if md.Data.MainQuantity <= 0.0 {
-										md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Resetting .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+										md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Resetting .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 										w.ResetApp(md, "all", sync)
 										<-sync
 										continue
@@ -927,63 +905,60 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Data.NextStartPointPrice = lastPrice
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Place order success: sell %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 					if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {
-						profitOrLostStatus = "Profit"
+						
 						md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 						md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: made %s %.8f: Total Profit as at now is %.8f MainQuantity remaining %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 						if md.Data.MainQuantity <= 0.0 {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Resetting .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Resetting .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 							w.ResetApp(md, "all", sync)
 							<-sync
 							continue
 						}
-						time.Sleep(time.Second * 2)
+						time.Sleep(time.Second * 20)
 						continue
 					}
 				//PTSell Negative Buy investment
 				} else if (md.Data.MainStartPointSell >= md.Data.NextStartPointPrice) && (math.Abs(md.Data.NextStartPointPrice-lastPrice) > profitPoint) && (md.Data.NextStartPointPrice > lastPrice) {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative Buy ProfitPoint crossed, now to try buy of more bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative Buy ProfitPoint crossed, now to try buy of more bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					profitOrLost = ((lastPrice + md.Data.TickSize*2) - md.Data.NextStartPointPrice) * md.Data.MainQuantity * (1.0 - md.Data.TakeLiquidityRate)
 					ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingBuy")
 					if err != nil || !strings.Contains(ordrStatus, "filled") {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
 						time.Sleep(time.Second * 20)
 						continue
 					}
 					lastPrice = lastPrice + md.Data.TickSize*2
 					md.Chans.SetParamChan <- SetParam{"SuccessfulOrders", 1.0}
-					profitOrLostStatus = "Lost"
 					md.Chans.SetParamChan <- SetParam{"TotalLost", profitOrLost}
 					md.Chans.SetParamChan <- SetParam{"MadeLostOrders", 1.0}
 					md.Data.MainQuantity += floatHolder3
-					md.Data.HodlerQuantity += floatHolder3
+					md.Data.HodlerQuantity += floatHolder3 //it seems holderquantity is representing bougthquantity
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					floatHolder = lastPrice + profitPoint
 					w.profitPriceOriginatorAChan <- ppPendingData{"", floatHolder}
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessed next profitPrice as %.8f ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessed next profitPrice as %.8f ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder, md.Data.DisableTransaction)
 					md.Data.NextStartPointPrice = lastPrice
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Place order success: Negative buy %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s:  Negative made %s %.8f: Total Lost as at now is %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalLost, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 					time.Sleep(time.Second * 2)
 					continue
 				}
 				//PTSell Buy selfProfit
 				if (md.Data.SoldQuantity > 0.0) && (math.Abs(md.Data.NextStartPointPrice-lastPrice) > profitPoint) && (md.Data.NextStartPointPrice > lastPrice) && (md.Data.MainStartPointSell < md.Data.NextStartPointPrice) {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Buy ProfitPoint crossed, now to try buy of again sold bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Buy ProfitPoint crossed, now to try buy of again sold bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					if md.Data.Hodler == "No" || md.Data.Hodler == "no" || md.Data.Hodler == "NO" {
 						profitOrLost = (md.Data.NextStartPointPrice - (lastPrice + md.Data.TickSize*2)) * md.Data.QuantityIncrement * (1.0 - md.Data.TakeLiquidityRate)
 						if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 							continue
 						}
 						ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingBuy")
 						if err != nil || !strings.Contains(ordrStatus, "filled") {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
 							time.Sleep(time.Second * 20)
 							continue
 						}
@@ -992,13 +967,12 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						md.Data.SoldQuantity -= floatHolder3
 						md.Data.MainQuantity += floatHolder3
 						if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {
-							profitOrLostStatus = "Profit"
+							
 							md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 							md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 							md.Chans.SetParamChan <- SetParam{"", 0}
 							md.Chans.SetParamChan <- SetParam{"", 0}
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Place order success: buy %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: made %s %.8f: Total Profit as at now is %.8f SoldQuantity remaining %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.SoldQuantity, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f \n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 							if md.Data.SoldQuantity <= 0.0 {
 								w.ResetApp(md, "all", sync)
 								<-sync
@@ -1009,12 +983,12 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					} else if md.Data.MainStartPointSell > lastPrice {
 						profitOrLost = (md.Data.NextStartPointPrice - (lastPrice + md.Data.TickSize*2)) * md.Data.SoldQuantity * (1.0 - md.Data.TakeLiquidityRate)
 						if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 							continue
 						}
 						ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.SoldQuantity, lastPrice, "PriceTradingBuy")
 						if err != nil || !strings.Contains(ordrStatus, "filled") {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
 							time.Sleep(time.Second * 20)
 							continue
 						}
@@ -1023,13 +997,12 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						md.Data.SoldQuantity -= floatHolder3
 						md.Data.MainQuantity += floatHolder3
 						if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {
-							profitOrLostStatus = "Profit"
+							
 							md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 							md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 							md.Chans.SetParamChan <- SetParam{"", 0}
 							md.Chans.SetParamChan <- SetParam{"", 0}
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Reserved Holdling SelfProfit Place order success: buy %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: made %s %.8f: Total Profit as at now is %.8f SoldQuantity remaining %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.SoldQuantity, md.Data.DisableTransaction)
 							if md.Data.SoldQuantity <= 0.0 {
 								w.ResetApp(md, "all", sync)
 								<-sync
@@ -1037,110 +1010,105 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 							}
 						}
 					} else {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Reversed Hodling continues, hodled %.8f amount | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.SoldQuantity, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Reversed Hodling continues, hodled %.8f amount | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.SoldQuantity, md.Data.DisableTransaction)
 						time.Sleep(time.Second * 20)
 						continue
 					}
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Place order success: buy %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 					md.Data.NextStartPointPrice = lastPrice
 				}
 				//PTSell profitPrice processed
 				if (md.Data.HodlerQuantity > 0.0) && (md.Data.MainStartPointSell >= md.Data.NextStartPointPrice) {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceGen proccessing ProfitPrice ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceGen proccessing ProfitPrice ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"ProfitPrice", <-w.profitPriceGenAChan}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: ProfitPrice proccessed from pendng slice as %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.ProfitPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s ProfitPrice proccessed from pendng slice as %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.ProfitPrice, md.Data.DisableTransaction)
 				}
 				//PTSell Negative Sell selfProfit
 				if (md.Data.MainStartPointSell >= md.Data.NextStartPointPrice) && (md.Data.ProfitPrice < lastPrice) && (md.Data.HodlerQuantity > 0.0) {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative Sell ProfitPoint crossed, now to try sell of bought asset at %.8f USD | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative Sell ProfitPoint crossed, now to try sell of bought asset at %.8f USD | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					if md.Data.Hodler == "No" || md.Data.Hodler == "no" || md.Data.Hodler == "NO" {
 						profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.NextStartPointPrice) * md.Data.QuantityIncrement * (1.0 - md.Data.TakeLiquidityRate)
 						if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 							continue
 						}
 						ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingSell")
 						if err != nil || !strings.Contains(ordrStatus, "filled") {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 							if ordrStatus == "Insufficient funds" {
 								floatHolder, err = w.jackpotOrderQuantity(md, lastPrice, md.Data.GoodBiz, "PriceTradingSell")
 								if err == nil {
 									profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.NextStartPointPrice) * floatHolder * (1.0 - md.Data.TakeLiquidityRate)
 									if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-										md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+										md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 										continue
 									}
 									ordrStatus, _, floatHolder3, err = w.placeOrder(md, floatHolder, lastPrice, "PriceTradingSell")
 									if err != nil || !strings.Contains(ordrStatus, "filled") {
-										md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Still Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+										md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Still Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 										time.Sleep(time.Second * 20)
 										continue
 									}
 									lastPrice = lastPrice - md.Data.TickSize*2
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessing pendingA resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessing pendingA resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 									w.profitPriceOriginatorAChan <- ppPendingData{"resize", 0.0}
 									md.Data.MainQuantity -= floatHolder3
-									floatHolder2 = floatHolder3
 									md.Data.HodlerQuantity -= floatHolder3
 									md.Chans.SetParamChan <- SetParam{"SuccessfulOrders", 1.0}
-									profitOrLostStatus = "Profit"
+									
 									md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 									md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 									md.Chans.SetParamChan <- SetParam{"", 0}
 									md.Chans.SetParamChan <- SetParam{"", 0}
 									md.Data.NextStartPointPrice = lastPrice
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Place order success: Negative sell %.8f amount at %.8f %swith profitPrice of %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder2, lastPrice, ordrStatus, md.Data.ProfitPrice, md.Data.DisableTransaction)
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative made %s %.8f with, \"%s\" Hodling: Total Profit as at now is %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.Hodler, md.Data.TotalProfit, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 								}
 							}
 							time.Sleep(time.Second * 20)
 							continue
 						}
 						lastPrice = lastPrice - md.Data.TickSize*2
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessing pendingA resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessing pendingA resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						w.profitPriceOriginatorAChan <- ppPendingData{"resize", 0.0}
 						profitOrLost = (lastPrice - md.Data.NextStartPointPrice) * md.Data.MainQuantity * (1.0 - md.Data.TakeLiquidityRate)
 						md.Data.MainQuantity -= floatHolder3
-						floatHolder2 = floatHolder3
 						md.Data.HodlerQuantity -= floatHolder3
 						//for HODLERS
 					} else if md.Data.MainStartPointSell < lastPrice {
 						profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.NextStartPointPrice) * md.Data.HodlerQuantity * (1.0 - md.Data.TakeLiquidityRate)
 						if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 							continue
 						}
 						ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.HodlerQuantity, lastPrice, "PriceTradingSell")
 						if err != nil || !strings.Contains(ordrStatus, "filled") {
-							md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 							time.Sleep(time.Second * 20)
 							continue
 						}
 						lastPrice = lastPrice - md.Data.TickSize*2
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessing pendingA emptying ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessing pendingA emptying ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						w.profitPriceOriginatorAChan <- ppPendingData{"resize", 9.9}
 
 						md.Data.MainQuantity -= floatHolder3
-						floatHolder2 = floatHolder3
 						md.Data.HodlerQuantity -= floatHolder3
 					} else {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative: Hodling continues, hodled %.8f amount | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.HodlerQuantity, md.Data.DisableTransaction)
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessing pendingA resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative: Hodling continues, hodled %.8f amount | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.HodlerQuantity, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessing pendingA resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						w.profitPriceOriginatorAChan <- ppPendingData{"resize", 0.0}
 						time.Sleep(time.Second * 20)
 						continue
 					}
 					md.Chans.SetParamChan <- SetParam{"SuccessfulOrders", 1.0}
-					profitOrLostStatus = "Profit"
+					
 					md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 					md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Data.NextStartPointPrice = lastPrice
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Place order success: Negative sell %.8f amount at %.8f %swith profitPrice of %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder2, lastPrice, ordrStatus, md.Data.ProfitPrice, md.Data.DisableTransaction)
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Negative made %s %.8f with, \"%s\" Hodling: Total Profit as at now is %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.Hodler, md.Data.TotalProfit, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 				}
 				time.Sleep(time.Second * 2)
 			}
@@ -1148,7 +1116,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 	} else {
 		md.Data.PriceTradingStarted = "buy"
 		defer func() {
-			md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Ended the buy of %.8f %s asset sold at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointBuy, md.Data.DisableTransaction)
+			md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Ended the buy of %.8f %s asset sold at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointBuy, md.Data.DisableTransaction)
 			md.Data.PriceTradingStarted = ""
 		}()
 		if !md.FromVersionUpdate {
@@ -1158,18 +1126,18 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 			md.Chans.SetParamChan <- SetParam{"", 0}
 			md.Data.NextStartPointPrice = md.Data.MainStartPointBuy
 			if !isClosed(w.profitPriceResetBChan) {
-				md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Resetting profitPrice pendingB .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Resetting profitPrice pendingB .... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				w.profitPriceResetBChan <- true
 			}
 			md.FromVersionUpdate = false
 		}
-		md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: started to buy %.8f %s asset sold at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointBuy, md.Data.DisableTransaction)
+		md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s started to buy %.8f %s asset sold at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointBuy, md.Data.DisableTransaction)
 		for {
 			select {
 			case <-md.Chans.StopBuyPriceTradingChan:
-				md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: App Shuting Down: Ended the buy of sold asset approptly !!!!! | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s App Shuting Down: Ended the buy of sold asset approptly !!!!! | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				if !isClosed(w.profitPriceResetBChan) {
-					md.Chans.MessageChan <- fmt.Sprintf("Market: %s: %s: Resetting profitPrice pending B.... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s Resetting profitPrice pending B.... | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 					w.profitPriceResetBChan <- true
 				}
 				return
@@ -1178,7 +1146,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					md.Data.NextStartPointPrice = nsp.LastPrice
 				}
 				md.Data.MainQuantity += nsp.PriceTradingStartQuantity
-				md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: md.Data.MainQuantity is updated to %.8f | nextStartPoint updated to %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, nsp.LastPrice, md.Data.DisableTransaction)
+				md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s md.Data.MainQuantity is updated to %.8f | nextStartPoint updated to %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, nsp.LastPrice, md.Data.DisableTransaction)
 				continue
 			default:
 				if strings.Contains(md.Data.DisableTransaction, "price") || strings.Contains(md.Data.DisableTransaction, "all trades") {
@@ -1190,7 +1158,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					tkr, err = w.API.GetTicker(md.Data.SymbolCode)
 					if err != nil {
 						ErrorMessage = fmt.Sprintf("%v", err)
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Unable to get Ticker | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Unable to get Ticker | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						if strings.Contains(ErrorMessage, "502 Bad Gateway") || strings.Contains(ErrorMessage, "503 Service Unavailable") || strings.Contains(ErrorMessage, "500 Internal Server") || strings.Contains(ErrorMessage, "Exchange temporary closed") {
 							time.Sleep(time.Millisecond * time.Duration(20000+<-w.Rand800))
 						} else {
@@ -1203,34 +1171,33 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 				lastPrice, _ = strconv.ParseFloat(tkr.Last, 64)
 				//PTBuy Buy profit/investment
 				if (math.Abs(md.Data.NextStartPointPrice-lastPrice) > profitPoint && md.Data.NextStartPointPrice > lastPrice) && md.Data.MainStartPointBuy >= md.Data.NextStartPointPrice {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Buy ProfitPoint crossed, now to try buy of sold asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Buy ProfitPoint crossed, now to try buy of sold asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					profitOrLost = (md.Data.MainStartPointBuy - ((lastPrice + md.Data.TickSize*2) + md.Data.TickSize*2)) * md.Data.QuantityIncrement * (1.0 - md.Data.TakeLiquidityRate)
 					if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						continue
 					}
 					ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingBuy")
 					if err != nil || !strings.Contains(ordrStatus, "filled") {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
 						time.Sleep(time.Second * 20)
 						continue
 					}
 					lastPrice = lastPrice + md.Data.TickSize*2
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: Place order success: buy %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 					md.Chans.SetParamChan <- SetParam{"SuccessfulOrders", 1.0}
 					md.Data.BoughtQuantity += floatHolder3
 					md.Data.MainQuantity -= floatHolder3
 					floatHolder = lastPrice + profitPoint
 					w.profitPriceOriginatorBChan <- ppPendingData{"", floatHolder}
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessed next profitPrice as %.8f ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessed next profitPrice as %.8f ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder, md.Data.DisableTransaction)
 					md.Data.NextStartPointPrice = lastPrice
 					if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {
-						profitOrLostStatus = "Profit"
 						md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 						md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: made %s %.8f: Total Profit as at now is %.8f MainQuantity remaining %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 						if md.Data.MainQuantity <= 0.0 {
 							w.ResetApp(md, "all", sync)
 							<-sync
@@ -1240,51 +1207,49 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 				}
 				//PTBuy profitPrice processed
 				if (md.Data.BoughtQuantity > 0.0) && (md.Data.MainStartPointBuy >= md.Data.NextStartPointPrice) {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceGen proccessing ProfitPrice ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceGen proccessing ProfitPrice ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"ProfitPrice", <-w.profitPriceGenBChan}
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s ProfitPrice proccessed from pendng slice as %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.ProfitPrice, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: ProfitPrice proccessed from pendng slice as %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.ProfitPrice, md.Data.DisableTransaction)
 				}
 				//PTBuy Sell selfProfit
 				if (md.Data.BoughtQuantity > 0.0) && (md.Data.ProfitPrice < lastPrice) && (md.Data.MainStartPointBuy >= md.Data.NextStartPointPrice) {
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Sell ProfitPoint crossed, now to try sell of again bought sold asset %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Sell ProfitPoint crossed, now to try sell of again bought sold asset %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.NextStartPointPrice) * md.Data.QuantityIncrement * (1.0 - md.Data.TakeLiquidityRate)
 					if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						continue
 					}
 					ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingSell")
 					if err != nil || !strings.Contains(ordrStatus, "filled") {
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 						if ordrStatus == "Insufficient funds" {
 							floatHolder, err = w.jackpotOrderQuantity(md, lastPrice, md.Data.GoodBiz, "PriceTradingSell")
 							if err == nil {
 								profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.NextStartPointPrice) * floatHolder * (1.0 - md.Data.TakeLiquidityRate)
 								if profitOrLost <= 0.0 && profitOrLost >= math.MaxFloat64 {
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s will make lost so repeat | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 									continue
 								}
 								ordrStatus, _, floatHolder3, err = w.placeOrder(md, floatHolder, lastPrice, "PriceTradingSell")
 								if err != nil || !strings.Contains(ordrStatus, "filled") {
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Still Unable to lace sell order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Still Unable to lace sell order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
 									time.Sleep(time.Second * 20)
 									continue
 								}
 								lastPrice = lastPrice - md.Data.TickSize*2
-								md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessing pending resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+								md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessing pending resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 								w.profitPriceOriginatorBChan <- ppPendingData{"resize", 0.0}
-								md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Place order success: sell %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 								md.Chans.SetParamChan <- SetParam{"SuccessfulOrders", 1.0}
 								md.Data.BoughtQuantity -= floatHolder3
 								md.Data.MainQuantity += floatHolder3
 								if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {
-									profitOrLostStatus = "Profit"
 									md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 									md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 									md.Chans.SetParamChan <- SetParam{"", 0}
 									md.Chans.SetParamChan <- SetParam{"", 0}
-									md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: made %s %.8f: Total Profit as at now is %.8f BoughtQuantity remaining %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.BoughtQuantity, md.Data.DisableTransaction)
+									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 									if md.Data.BoughtQuantity <= 0.0 {
 										w.ResetApp(md, "all", sync)
 										<-sync
@@ -1294,23 +1259,21 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 								md.Data.NextStartPointPrice = lastPrice
 							}
 						}
-						time.Sleep(time.Second * 20)
+						time.Sleep(time.Second * 20)  
 						continue
 					}
 					lastPrice = lastPrice - md.Data.TickSize*2
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: profitPriceOriginator proccessing pending resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessing pending resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 					w.profitPriceOriginatorBChan <- ppPendingData{"resize", 0.0}
-					md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: SelfProfit Place order success: sell %.8f amount at %.8f %s| disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
 					md.Chans.SetParamChan <- SetParam{"SuccessfulOrders", 1.0}
 					md.Data.BoughtQuantity -= floatHolder3
 					md.Data.MainQuantity += floatHolder3
 					if profitOrLost > 0.0 && profitOrLost < math.MaxFloat64 {
-						profitOrLostStatus = "Profit"
 						md.Chans.SetParamChan <- SetParam{"TotalProfit", profitOrLost}
 						md.Chans.SetParamChan <- SetParam{"MadeProfitOrders", 1.0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
 						md.Chans.SetParamChan <- SetParam{"", 0}
-						md.Chans.MessageChan <- fmt.Sprintf("PriceTrading: %s: %s: made %s %.8f: Total Profit as at now is %.8f BoughtQuantity remaining %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, profitOrLostStatus, profitOrLost, md.Data.TotalProfit, md.Data.BoughtQuantity, md.Data.DisableTransaction)
+						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 						if md.Data.BoughtQuantity <= 0.0 {
 							w.ResetApp(md, "all", sync)
 							<-sync
