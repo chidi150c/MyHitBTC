@@ -325,12 +325,60 @@ func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, http.StatusInternalServerError)
 		return
 	}
+	var dat AppVehicle
 	for i := 0; i < len(WebJSONData); i++ {
 		//Check if symbol is already trading
-		_, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[WebJSONData[i].SymbolCode])
+		dataOfApp, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[WebJSONData[i].SymbolCode])
 		if err != model.ErrAppNameEmpty && err != model.ErrAppNotFound {
-			http.Error(w, "Symbol Already Trading ", http.StatusInternalServerError)
-			return
+			//save the connection
+			log.Printf("%s Already Exist", WebJSONData[i].SymbolCode)
+			dat = <-dataOfApp.Chans.MyChan
+			dat.App.Data.Side =  WebJSONData[i].Side 
+			dat.App.Data.DisableTransaction =  WebJSONData[i].DisableTransaction
+			dat.App.Data.MessageFilter =  WebJSONData[i].MessageFilter
+			dat.App.Data.MrktQuantity =  WebJSONData[i].MrktQuantity
+			dat.App.Data.MrktBuyPrice =  WebJSONData[i].MrktBuyPrice
+			dat.App.Data.MrktSellPrice =  WebJSONData[i].MrktSellPrice
+			dat.App.Data.NeverBought =  WebJSONData[i].NeverBought
+			dat.App.Data.NeverSold =  WebJSONData[i].NeverSold
+			dat.App.Data.QuantityIncrement =  WebJSONData[i].QuantityIncrement
+			dat.App.Data.TickSize =  WebJSONData[i].TickSize
+			dat.App.Data.TakeLiquidityRate =  WebJSONData[i].TakeLiquidityRate
+			dat.App.Data.HeartbeatBuy =  WebJSONData[i].HeartbeatBuy
+			dat.App.Data.HeartbeatSell =  WebJSONData[i].HeartbeatSell
+			dat.App.Data.SuccessfulOrders =  WebJSONData[i].SuccessfulOrders
+			dat.App.Data.MadeProfitOrders =  WebJSONData[i].MadeProfitOrders
+			dat.App.Data.MadeLostOrders =  WebJSONData[i].MadeLostOrders
+			dat.App.Data.StopLostPoint =  WebJSONData[i].StopLostPoint
+			dat.App.Data.TrailPoints =  WebJSONData[i].TrailPoints
+			dat.App.Data.LeastProfitMargin =  WebJSONData[i].LeastProfitMargin
+			dat.App.Data.SpinOutReason =  WebJSONData[i].SpinOutReason
+			dat.App.Data.SureTradeFactor =  WebJSONData[i].SureTradeFactor
+			dat.App.Data.Hodler =  WebJSONData[i].Hodler
+			dat.App.Data.GoodBiz =  WebJSONData[i].GoodBiz
+			dat.App.Data.AlternateData =  WebJSONData[i].AlternateData
+			dat.App.Data.InstantProfit =  WebJSONData[i].InstantProfit
+			dat.App.Data.InstantLost =  WebJSONData[i].InstantLost
+			dat.App.Data.TotalProfit =  WebJSONData[i].TotalProfit
+			dat.App.Data.TotalLost =  WebJSONData[i].TotalLost
+			dat.App.Data.PriceTradingStarted =  WebJSONData[i].PriceTradingStarted
+			dat.App.Data.NextMarketBuyPoint =  WebJSONData[i].NextMarketBuyPoint
+			dat.App.Data.NextMarketSellPoint =  WebJSONData[i].NextMarketSellPoint
+			dat.App.Data.MainStartPointSell =  WebJSONData[i].MainStartPointSell
+			dat.App.Data.SoldQuantity =  WebJSONData[i].SoldQuantity
+			dat.App.Data.BoughtQuantity =  WebJSONData[i].BoughtQuantity
+			dat.App.Data.MainStartPointBuy =  WebJSONData[i].MainStartPointBuy
+			dat.App.Data.MainQuantity =  WebJSONData[i].MainQuantity
+			dat.App.Data.NextStartPointNegPrice =  WebJSONData[i].NextStartPointNegPrice
+			dat.App.Data.NextStartPointPrice =  WebJSONData[i].NextStartPointPrice
+			dat.App.Data.ProfitPointFactor =  WebJSONData[i].ProfitPointFactor
+			dat.App.Data.HodlerQuantity =  WebJSONData[i].HodlerQuantity
+			dat.App.Data.ProfitPriceUsed =  WebJSONData[i].ProfitPriceUsed
+			dat.App.Data.ProfitPrice =  WebJSONData[i].ProfitPrice
+			dat.App.Data.PendingA =  WebJSONData[i].PendingA
+			dat.App.Data.PendingB =  WebJSONData[i].PendingB			
+			dat.RespChan <- true
+			continue
 		}
 		//Iniialling worker service for this session
 		md := &App{}
