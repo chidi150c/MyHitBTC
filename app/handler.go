@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bufio"
+	"os"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -85,6 +87,8 @@ func NewTradeHandler(host string, uchans model.UDBChans, mdchans MDDBChans, scha
 	h.mux.Post("/deleteapp", h.userDeleteAppHandler)
 	h.mux.Get("/deleteallapp", h.userDeleteAllAppHandler)
 	h.mux.Get("/newverwrite", h.newVerWriteHandler)
+	h.mux.Post("/mdupdate", h.mdUploadHandler)
+	h.mux.Get("/messagedownload", h.userMessageDownloadHandler)
 	h.mux.Get("/newverread", h.newVerReadHandler)
 	h.mux.Post("/deleteallapp", h.userDeleteAllAppHandler)
 	h.mux.Get("/resetapp", h.userResetAppHandler)
@@ -103,7 +107,39 @@ func (h TradeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.mux.ServeHTTP(w, r)
 	}
 }
-
+func (h TradeHandler) userMessageDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	username := r.FormValue("Username")
+	token := r.FormValue("Token")
+	// is there a username?
+	CallerChan := make(chan model.UserDbResp)
+	h.sessionDBService.session.userDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
+	dbResp := <-CallerChan
+	if dbResp.User == nil || dbResp.Err != nil || dbResp.User.Username != username {
+		http.Error(w, "Username not Found", http.StatusForbidden)
+		return
+	}
+	if dbResp.User.Token != token {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	readFile, err :=  os.OpenFile("./nohup.out", os.O_RDONLY, 0600)
+	if err != nil {
+		fmt.Printf("failed to open file: %v", err)
+	}
+	fileScanner := bufio.NewScanner(readFile)
+	fileScanner.Split(bufio.ScanLines)
+	var FileTextLines []string
+	for fileScanner.Scan() {
+		FileTextLines = append(FileTextLines, fileScanner.Text())
+	}
+	readFile.Close()
+	err = json.NewEncoder(w).Encode(FileTextLines)
+	if err != nil {
+		log.Println(err)
+	}
+	return
+}
 //indexHandler delivers the Home page to the user
 func (h TradeHandler) newVerWriteHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("Username")
@@ -213,7 +249,7 @@ func (h TradeHandler) newVerReadHandler(w http.ResponseWriter, r *http.Request) 
 	req.Header.Add("Accept", "application/json")
 	if Resp, err := client.Do(req); err == nil {
 		if Resp.StatusCode >= 200 && Resp.StatusCode < 300 {
-			var WebJSONData []*model.AppDataOld
+			var WebJSONData []*model.AppData
 			Jdata := json.NewDecoder(Resp.Body)
 			err := Jdata.Decode(&WebJSONData)
 			if err != nil {
@@ -230,9 +266,9 @@ func (h TradeHandler) newVerReadHandler(w http.ResponseWriter, r *http.Request) 
 				}
 				//Iniialling worker service for this session
 				md := &App{}
-				md.Data = convertOld2New(WebJSONData[i])
-				//md.Data = WebJSONData[i]
-				log.Printf("For %s: For %s: pending = %v", md.Data.SymbolCode, user.Username, WebJSONData[i].Pending)
+				//md.Data = convertOld2New(WebJSONData[i])
+				md.Data = WebJSONData[i]
+				log.Printf("For %s: For %s: pending = %v", md.Data.SymbolCode, user.Username, WebJSONData[i].PendingB)
 				h.sessionDBService.session.workerAppService = NewWorkerAppService(md.Data, &h.sessionDBService.session, h.uuidChan)
 				_, err = h.sessionDBService.session.workerAppService.API.GetSymbol(md.Data.SymbolCode)
 				if err != nil {
@@ -274,6 +310,68 @@ func (h TradeHandler) newVerReadHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	return
 }
+//indexHandler delivers the Home page to the user
+func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
+	user, ok := AlreadyLoggedIn(w, r, &h)
+	if !ok {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	var WebJSONData []*model.AppData
+	Jdata := json.NewDecoder(r.Body)
+	err := Jdata.Decode(&WebJSONData)
+	if err != nil {
+		msg := fmt.Sprintf("Error: %v", err)
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+	for i := 0; i < len(WebJSONData); i++ {
+		//Check if symbol is already trading
+		_, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[WebJSONData[i].SymbolCode])
+		if err != model.ErrAppNameEmpty && err != model.ErrAppNotFound {
+			http.Error(w, "Symbol Already Trading ", http.StatusInternalServerError)
+			return
+		}
+		//Iniialling worker service for this session
+		md := &App{}
+		//md.Data = convertOld2New(WebJSONData[i])
+		md.Data = WebJSONData[i]
+		log.Printf("For %s: For %s: pending = %v", md.Data.SymbolCode, user.Username, WebJSONData[i].PendingB)
+		h.sessionDBService.session.workerAppService = NewWorkerAppService(md.Data, &h.sessionDBService.session, h.uuidChan)
+		_, err = h.sessionDBService.session.workerAppService.API.GetSymbol(md.Data.SymbolCode)
+		if err != nil {
+			log.Printf("For %s: %v\n", md.Data.SymbolCode, err)
+			continue
+		}
+		h, err = h.syncParams(user, md, "add")
+		if err != nil {
+			log.Printf("newVerReadHandler1 %v\n", err)
+			return
+		}
+		appMarginSendingChan := make(chan MarginVeh)
+		mar := MarginDBVeh{
+			ID:          md.Data.ID,
+			MChan:       appMarginSendingChan,
+			AddOrDelete: "add",
+		}
+		//log.Printf("Waiting to Register %s appMarginSendingChan to margin register", md.Data.SymbolCode)
+		h.MarginRegisterChan <- mar
+		md.FromVersionUpdate = true
+		md.Chans.MyChan, err = h.sessionDBService.session.workerAppService.AutoTradeManager(md, appMarginSendingChan)
+		if err != nil {
+			log.Printf("newVerReadHandler2 %v\n", err)
+			return
+		}
+		h, err = h.syncParams(user, md, "add")
+		if err != nil {
+			log.Printf("newVerReadHandler3 %v\n", err)
+			return
+		}
+	}
+	http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
+	return
+}
+
 
 //indexHandler delivers the Home page to the user
 func (h TradeHandler) indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -469,7 +567,7 @@ func (h TradeHandler) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Unable to creat Session please signUp", http.StatusForbidden)
 			log.Printf("%v\n", sDbResp.Err)
 			return
-		}
+		}		
 		h.sessionDBService.session = *sDbResp.Session
 		// create web session
 		h.sessionDBService.session.SetToken(w, r, dbResp.User.Username, dbResp.User.ID, "/", dbResp.User.Level)
@@ -635,7 +733,6 @@ func (h TradeHandler) userMarginAppHandler(w http.ResponseWriter, r *http.Reques
 	}
 	return
 }
-
 type MarginData struct {
 	GrandMargin string
 	Margins     []Margin
@@ -647,7 +744,6 @@ type Margin struct {
 	MadeLostOrders   string
 	Value            string
 }
-
 func (h TradeHandler) userResetAppHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := AlreadyLoggedIn(w, r, &h)
 	if !ok {
@@ -774,7 +870,6 @@ func (h TradeHandler) userCloseUserSocketHandler(w http.ResponseWriter, r *http.
 	http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
 	return
 }
-
 //GetAppDataStringified ..
 type GetAppDataStringified struct {
 	Secret               string `json:"secret"`
@@ -803,7 +898,6 @@ type GetAppDataStringified struct {
 	Hodler               string `json:"hodler"`
 	DeleteMessage        string `json:"deleteMessage"`
 }
-
 func (h TradeHandler) userEditAppHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := AlreadyLoggedIn(w, r, &h)
 	if !ok {
@@ -1041,19 +1135,16 @@ func (h TradeHandler) userGetAppListHandler(w http.ResponseWriter, r *http.Reque
 	}
 	return
 }
-
 //WebData ...
 type WebData struct {
 	Symbols []string
 }
-
 // logoutHandler deletes the cookie
 func (h TradeHandler) userlogoutHandler(w http.ResponseWriter, r *http.Request) {
 	h.sessionDBService.session.logout(w, r)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 	return
 }
-
 func (h TradeHandler) syncParams(user *model.User, md *App, action string) (TradeHandler, error) {
 	//Sync all IDs of user, session and app
 	var (
