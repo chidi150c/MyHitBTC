@@ -20,10 +20,12 @@ type Session struct {
 	cachedUser    *model.User
 	Sockets        map[string]AppConn
 	cachedApp     *App
-	userDBChans   model.UDBChans
-	appDBChans    MDDBChans
-	appDBService    AppDBService
-	userDBService   UserDBService
+	appMemDBChans    MDDBChans
+	appMemDBService    AppMemDBService
+	appBoltDBChans    MDDBChans
+	appBoltDBService    AppMemDBService
+	userBoltDBChans   model.UDBChans
+	userBoltDBService   UserBoltDBService
 	workerAppService WorkerAppService
 	websocketUserService WebsocketUserService
 	websocketUSChans WUSChans

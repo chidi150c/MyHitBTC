@@ -333,51 +333,34 @@ func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
 			//save the connection
 			log.Printf("%s Already Exist", WebJSONData[i].SymbolCode)
 			dat = <-dataOfApp.Chans.MyChan
-			dat.App.Data.Side =  WebJSONData[i].Side 
 			dat.App.Data.DisableTransaction =  WebJSONData[i].DisableTransaction
 			dat.App.Data.MessageFilter =  WebJSONData[i].MessageFilter
-			dat.App.Data.MrktQuantity =  WebJSONData[i].MrktQuantity
-			dat.App.Data.MrktBuyPrice =  WebJSONData[i].MrktBuyPrice
-			dat.App.Data.MrktSellPrice =  WebJSONData[i].MrktSellPrice
 			dat.App.Data.NeverBought =  WebJSONData[i].NeverBought
 			dat.App.Data.NeverSold =  WebJSONData[i].NeverSold
 			dat.App.Data.QuantityIncrement =  WebJSONData[i].QuantityIncrement
 			dat.App.Data.TickSize =  WebJSONData[i].TickSize
 			dat.App.Data.TakeLiquidityRate =  WebJSONData[i].TakeLiquidityRate
-			dat.App.Data.HeartbeatBuy =  WebJSONData[i].HeartbeatBuy
-			dat.App.Data.HeartbeatSell =  WebJSONData[i].HeartbeatSell
 			dat.App.Data.SuccessfulOrders =  WebJSONData[i].SuccessfulOrders
 			dat.App.Data.MadeProfitOrders =  WebJSONData[i].MadeProfitOrders
 			dat.App.Data.MadeLostOrders =  WebJSONData[i].MadeLostOrders
 			dat.App.Data.StopLostPoint =  WebJSONData[i].StopLostPoint
 			dat.App.Data.TrailPoints =  WebJSONData[i].TrailPoints
 			dat.App.Data.LeastProfitMargin =  WebJSONData[i].LeastProfitMargin
-			dat.App.Data.SpinOutReason =  WebJSONData[i].SpinOutReason
 			dat.App.Data.SureTradeFactor =  WebJSONData[i].SureTradeFactor
 			dat.App.Data.Hodler =  WebJSONData[i].Hodler
 			dat.App.Data.GoodBiz =  WebJSONData[i].GoodBiz
-			dat.App.Data.AlternateData =  WebJSONData[i].AlternateData
 			dat.App.Data.InstantProfit =  WebJSONData[i].InstantProfit
 			dat.App.Data.InstantLost =  WebJSONData[i].InstantLost
 			dat.App.Data.TotalProfit =  WebJSONData[i].TotalProfit
 			dat.App.Data.TotalLost =  WebJSONData[i].TotalLost
-			dat.App.Data.PriceTradingStarted =  WebJSONData[i].PriceTradingStarted
-			dat.App.Data.NextMarketBuyPoint =  WebJSONData[i].NextMarketBuyPoint
-			dat.App.Data.NextMarketSellPoint =  WebJSONData[i].NextMarketSellPoint
-			dat.App.Data.MainStartPointSell =  WebJSONData[i].MainStartPointSell
-			dat.App.Data.SoldQuantity =  WebJSONData[i].SoldQuantity
-			dat.App.Data.BoughtQuantity =  WebJSONData[i].BoughtQuantity
-			dat.App.Data.MainStartPointBuy =  WebJSONData[i].MainStartPointBuy
-			dat.App.Data.MainQuantity =  WebJSONData[i].MainQuantity
-			dat.App.Data.NextStartPointNegPrice =  WebJSONData[i].NextStartPointNegPrice
-			dat.App.Data.NextStartPointPrice =  WebJSONData[i].NextStartPointPrice
-			dat.App.Data.ProfitPointFactor =  WebJSONData[i].ProfitPointFactor
-			dat.App.Data.HodlerQuantity =  WebJSONData[i].HodlerQuantity
-			dat.App.Data.ProfitPriceUsed =  WebJSONData[i].ProfitPriceUsed
-			dat.App.Data.ProfitPrice =  WebJSONData[i].ProfitPrice
 			dat.App.Data.PendingA =  WebJSONData[i].PendingA
 			dat.App.Data.PendingB =  WebJSONData[i].PendingB			
 			dat.RespChan <- true
+			h, err = h.syncParams(user, dat.App, "updateBolt")
+			if err != nil {
+				log.Printf("newVerReadHandler3 %v\n", err)
+				return
+			}
 			continue
 		}
 		//Iniialling worker service for this session
@@ -662,23 +645,26 @@ func (h TradeHandler) userAddAppHandler(w http.ResponseWriter, r *http.Request) 
 		}
 		symbols := strings.Split(mdHighLevel.Data.SymbolCode, ",")
 		var symbol string
-		//Further Initialize other fields of App
+		// This Channel is use to store data direct to bolt database
 		hboltDbChansAddDbChan := h.boltDbChans.AddDbChan
+		//Further Initialize other fields of App
 		for _, symbol = range symbols {
 			hboltDbChansAddDbChan = h.boltDbChans.AddDbChan
 			//Check if symbol is already trading
 			_, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[symbol])
+			// if already exist ask the user whether it should be delete and return
 			if err != model.ErrAppNameEmpty && err != model.ErrAppNotFound {
 				dat := GetAppDataStringified{
 					DeleteMessage: "Symbol Already Trading, Do you want to delete: ",
 					SymbolCode:    symbol,
 				}
+				//presenting a delete form to the user to confirm deletion
 				if err := deleteappTmpl.Execute(w, r, dat, user); err != nil {
 					log.Printf("userAddAppHandler1 %v\n", err)
 				}
 				return
 			}
-			//Iniialling worker service for this session
+			// Creating initial md
 			md := &App{
 				Data: &model.AppData{
 					PublicKey: mdHighLevel.Data.PublicKey,
@@ -689,11 +675,13 @@ func (h TradeHandler) userAddAppHandler(w http.ResponseWriter, r *http.Request) 
 			md.Data.SymbolCode = symbol
 			md.Data.UsrID = user.ID
 			RespChan := make(chan model.AppDataResp)
+			//sending md to database and to generate the ID
 			hboltDbChansAddDbChan <- model.AppDataBoltVehicle{0, md.Data, RespChan}
 			hboltDbChansAddDbChan = nil
 			apdaresp := <-RespChan
 			if apdaresp.Err != nil {
 				if apdaresp.Err == model.ErrAppExists {
+					// If already existing then get it and have the ID
 					h.boltDbChans.GetDbChan <- model.AppDataBoltVehicle{apdaresp.AppID, md.Data, RespChan}
 					apdaresp = <-RespChan
 					if apdaresp.Err != nil {
@@ -702,6 +690,7 @@ func (h TradeHandler) userAddAppHandler(w http.ResponseWriter, r *http.Request) 
 						return
 					}
 					md.Data = apdaresp.AppData
+					// to close and reopen any existing priceTrading with the new or revived version
 					md.FromVersionUpdate = true
 				} else {
 					log.Printf("%v\n", apdaresp.Err)
@@ -1005,7 +994,7 @@ func (h TradeHandler) userEditAppHandler(w http.ResponseWriter, r *http.Request)
 		dat.App.Data.NeverBought = r.FormValue("neverbought")
 		dat.App.Data.NeverSold = r.FormValue("neversold")
 		dat.RespChan <- true
-		h, _ = h.syncParams(user, dat.App, "update")
+		h, _ = h.syncParams(user, nil, "update")
 		h.sessionDBService.session.workerAppService.API.SesSion.Auth = []string{dat.App.Data.PublicKey, dat.App.Data.Secret}
 		h, _ = h.syncParams(user, dat.App, "update")
 		http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
@@ -1094,8 +1083,10 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 	}
 	id := r.FormValue("appid")
 	Replaced := false
+	//The first request is a Get request to delete which presents a confirmation form for the second request which is a POST request
 	if strings.Contains(id, "POST") {
 		id = strings.Replace(id, "POST", "", 1)
+		//This is a way to show that this is the second request with a POST method confirmaing going ahead to delete
 		Replaced = true
 	}
 	app, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[id])
@@ -1138,15 +1129,23 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		delete(user.ApIDs, app.Data.SymbolCode)
-
 		h, err = h.syncParams(user, nil, "update")
 		if err != nil {
 			log.Printf("userDeleteAppHandler5 %v\n", err)
 			return
+		}		
+		CallerChan := make(chan model.AppDataResp)
+		h.boltDbChans.DeleteDbChan <- model.AppDataBoltVehicle{app.Data.ID,app.Data,CallerChan}
+		delResp := <-CallerChan
+		if delResp.Err != nil {
+			log.Printf("DB Update Error: %v\n", delResp)
+		}else{
+			log.Printf("DB Update: %s Deleted succesfully\n", app.Data.SymbolCode)
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
+	//Presents a confirmation form to the user's UI for the deleting which sends a POST form back to this handler for the deleting
 	if err := deleteappTmpl.Execute(w, r, dat, user); err != nil {
 		log.Printf("userDeleteAppHandler6 %v\n", err)
 		return
@@ -1224,7 +1223,44 @@ func (h TradeHandler) syncParams(user *model.User, md *App, action string) (Trad
 	//initiallize user DB service
 	h.sessionDBService.session.userDBService.session = &h.sessionDBService.session
 	//store user, session and app
-	if action == "update" {
+	if action == "updateBolt" {
+		// User is not stored in memory it is already being stored and updated directly into the bolt database created at signup so you can only update
+		err = h.sessionDBService.session.userDBService.UpdateUser(user)
+		if err != nil {
+			log.Printf("syncParams1 %v", err)
+			return h, err
+		}
+		// There is no bolt database for session it completely reside in memory, it is recreated at each login
+		err = h.sessionDBService.UpdateSession(&h.sessionDBService.session)
+		if err != nil {
+			log.Printf("syncParams2 %v", err)
+			return h, err
+		}
+		if md != nil {
+			// md has both memory and bolt database storages, the app functions interact with its memory stored copy for faster access to md
+			err = h.sessionDBService.session.appDBService.UpdateApp(md)
+			if err != nil {
+				log.Printf("syncParams3 %v", err)
+				return h, err
+			}
+			CallerChan  := make(chan model.AppDataResp)
+			h.boltDbChans.UpdateDbChan <- model.AppDataBoltVehicle{md.Data.ID, md.Data,CallerChan}
+			updResp := <-CallerChan
+			if updResp.Err != nil {
+				log.Printf("DB App Update Err: %v\n", updResp.Err)
+			}else{
+				fmt.Printf("mdUpdate done successfully")
+			}
+			CallerChan2  := make(chan model.UserDbResp)
+			h.sessionDBService.session.userDBChans.UpdateDbChan <-model.UserDbData{user.ID, user, CallerChan2}
+			updResp2 := <-CallerChan2
+			if updResp2.Err != nil {
+				log.Printf("DB User Update Err: %v\n", updResp2.Err)
+			}else{
+				fmt.Printf("userUpdate done successfully")
+			}
+		}
+	}else if action == "update" {
 		err = h.sessionDBService.session.userDBService.UpdateUser(user)
 		if err != nil {
 			log.Printf("syncParams1 %v", err)
@@ -1240,6 +1276,41 @@ func (h TradeHandler) syncParams(user *model.User, md *App, action string) (Trad
 			if err != nil {
 				log.Printf("syncParams3 %v", err)
 				return h, err
+			}
+		}
+	} else if action == "addBolt" {
+		//store user, session and app
+		err = h.sessionDBService.session.userDBService.UpdateUser(user)
+		if err != nil {
+			log.Printf("syncParams1 %v", err)
+			return h, err
+		}
+		err = h.sessionDBService.AddSession(&h.sessionDBService.session)
+		if err != nil {
+			log.Printf("syncParams5 %v", err)
+			return h, err
+		}
+		if md != nil {
+			err = h.sessionDBService.session.appDBService.AddApp(md)
+			if err != nil {
+				log.Printf("syncParams6 %v", err)
+				return h, err
+			}
+			CallerChan  := make(chan model.AppDataResp)
+			h.boltDbChans.AddDbChan <- model.AppDataBoltVehicle{md.Data.ID, md.Data,CallerChan}
+			updResp := <-CallerChan
+			if updResp.Err != nil {
+				log.Printf("DB App Update Err: %v\n", updResp.Err)
+			}else{
+				fmt.Printf("mdUpdate done successfully")
+			}
+			CallerChan2  := make(chan model.UserDbResp)
+			h.sessionDBService.session.userDBChans.UpdateDbChan <-model.UserDbData{user.ID, user, CallerChan2}
+			updResp2 := <-CallerChan2
+			if updResp2.Err != nil {
+				log.Printf("DB User Update Err: %v\n", updResp2.Err)
+			}else{
+				fmt.Printf("userUpdate done successfully")
 			}
 		}
 	} else {

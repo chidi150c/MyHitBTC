@@ -7,17 +7,17 @@ import (
 
 type UserDB map[model.UserID]*model.User
 
-type UserDBService struct {
+type UserBoltDBService struct {
 	session *Session
 }
 
-func (u *UserDBService) AddUser(user *model.User) error {
+func (u *UserBoltDBService) AddUser(user *model.User) error {
 	CallerChan := make(chan model.UserDbResp)
-	u.session.userDBChans.AddDbChan <- model.UserDbData{user.ID, user, CallerChan}
+	u.session.userBoltDBChans.AddDbChan <- model.UserDbData{user.ID, user, CallerChan}
 	usrDbResp := <-CallerChan
 	return usrDbResp.Err
 }
-func (u *UserDBService) GetUser(id model.UserID) (*model.User, error) {
+func (u *UserBoltDBService) GetUser(id model.UserID) (*model.User, error) {
 	if id == 0 {
 		return nil, model.ErrUserNameEmpty
 	}
@@ -29,7 +29,7 @@ func (u *UserDBService) GetUser(id model.UserID) (*model.User, error) {
 	}
 	return usrDbResp.User, usrDbResp.Err
 }
-func (u *UserDBService) GetUserByName(usrname string) (*model.User, error) {
+func (u *UserBoltDBService) GetUserByName(usrname string) (*model.User, error) {
 	if usrname == "0" {
 		return nil, model.ErrUserNameEmpty
 	}
@@ -41,7 +41,7 @@ func (u *UserDBService) GetUserByName(usrname string) (*model.User, error) {
 	}
 	return usrDbResp.User, usrDbResp.Err
 }
-func (u *UserDBService) UpdateUser(user *model.User) error {
+func (u *UserBoltDBService) UpdateUser(user *model.User) error {
 	cachedUser, err := u.session.Authenticate()
 	if err != nil {
 		return err
@@ -55,7 +55,7 @@ func (u *UserDBService) UpdateUser(user *model.User) error {
 	usrDbResp := <-CallerChan
 	return usrDbResp.Err
 }
-func (u *UserDBService) DeleteUser(id model.UserID) error {
+func (u *UserBoltDBService) DeleteUser(id model.UserID) error {
 	cachedUser, err := u.session.Authenticate()
 	if err != nil {
 		return err

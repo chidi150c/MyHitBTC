@@ -10,7 +10,7 @@ import (
 	boltdb "github.com/coreos/bbolt"
 )
 
-func AppDataBoltServiceFunc(AppDataBoltChans model.ABDBChans, memAppDataChanChan chan chan *model.AppData) {
+func AppDataBoltDBServiceFunc(AppDataBoltDBChans model.ABDBChans, memAppDataChanChan chan chan *model.AppData) {
 	log.Printf("AppDataBoltServiceFunc started")
 	//Database initialization Starts...
 	//Initializing bolt DB
@@ -28,34 +28,38 @@ func AppDataBoltServiceFunc(AppDataBoltChans model.ABDBChans, memAppDataChanChan
 	appBoltServ := NewAppDataService(db)
 	for {
 		select {
-		case dat = <-AppDataBoltChans.AddDbChan:
+		case dat = <-AppDataBoltDBChans.AddDbChan:
 			id, err = appBoltServ.AddAppData(dat.AppData)
 			if err == nil && id != 0 {
 				dat.AppData.ID = id
 				dat.CallerChan <- model.AppDataResp{id, dat.AppData, nil}
 			} else {
+				log.Printf("DB Add Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{id, nil, err}
 			}
-		case dat = <-AppDataBoltChans.UpdateDbChan:
+		case dat = <-AppDataBoltDBChans.UpdateDbChan:
 			err = appBoltServ.UpdateAppData(dat.AppData)
 			if err == nil {
 				dat.CallerChan <- model.AppDataResp{dat.AppData.ID, dat.AppData, nil}
 				log.Printf("DB UpdateAppData %v done id: %v", dat.AppData.SymbolCode, dat.AppData.ID)
 			} else {
+				log.Printf("DB Update Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{Err: model.ErrInternal}
 			}
-		case dat = <-AppDataBoltChans.GetDbChan:
+		case dat = <-AppDataBoltDBChans.GetDbChan:
 			dat.AppData, err = appBoltServ.GetAppData(dat.AppID)
 			if err == nil {
 				dat.CallerChan <- model.AppDataResp{dat.AppData.ID, dat.AppData, nil}
 			} else {
+				log.Printf("DB Get Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{Err: model.ErrInternal}
 			}
-		case dat = <-AppDataBoltChans.DeleteDbChan:
+		case dat = <-AppDataBoltDBChans.DeleteDbChan:
 			err = appBoltServ.DeleteAppData(dat.AppID)
 			if err == nil {
 				dat.CallerChan <- model.AppDataResp{dat.AppID, nil, nil}
 			} else {
+				log.Printf("DB Delete Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{Err: model.ErrInternal}
 			}
 		case memoryAppDataChan := <-memAppDataChanChan:

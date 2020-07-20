@@ -13,7 +13,7 @@ type SDBChans struct {
 
 type SessionDB map[model.SessionID]*Session
 
-func SessionDBServiceFunc(SessionDBChans SDBChans) {
+func SessionMemDBServiceFunc(SessionMemDBChans SDBChans) {
 	var (
 		dat SessionDbData
 		v   *Session

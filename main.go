@@ -54,23 +54,25 @@ func main() {
 	// tw := twilio.NewTwilioAPI("+" + "2349086790286")
 	//Starting the getTicker goroutine
 
-	UserDBChans, AppDBChans, SessionDBChans, WebsocketUserChans, AppDataBoltChans := initDB()
+	UserBoltDBChans, AppMemDBChans, SessionMemDBChans, WebsocketUserChans, AppDataBoltDBChans := initDB()
 	memAppDataChanChan := make(chan chan *model.AppData)
 	uDBRCC := make(chan chan *model.User)
-	go bolt.UserBoltServiceFunc(UserDBChans, uDBRCC)
-	go bolt.AppDataBoltServiceFunc(AppDataBoltChans, memAppDataChanChan)
-	//go memory.UserDBServiceFunc(UserDBChans)
-	go app.AppDBServiceFunc(AppDBChans, memAppDataChanChan)
-	go app.SessionDBServiceFunc(SessionDBChans)
+	// UserBoltServiceFunc proveds boltDB user storege services and as access speed is not required for user read/write there is no memory data storage for user
+	go bolt.UserBoltDBServiceFunc(UserBoltDBChans, uDBRCC)
+	//AppDataBoltServiceFunc provides in boltDB app storage service. Direct app read/write with boltDB was prevented for faster access achieved by memory read/write  
+	go bolt.AppDataBoltDBServiceFunc(AppDataBoltDBChans, memAppDataChanChan)
+	//AppDBServiceFunc privides in memory app storage for faster operation  
+	go app.AppDataMemDBServiceFunc(AppMemDBChans, memAppDataChanChan)
+	go app.SessionMemDBServiceFunc(SessionMemDBChans)
 	go app.WebsocketUserServiceFunc(WebsocketUserChans)
 	UUIDChan := make(chan string)
 	go app.RealtimeUUID(UUIDChan)
 	sendMChan := make(chan chan app.MarginDB)
 	registerMChan := make(chan app.MarginDBVeh)
 	go app.MarginCal(registerMChan, sendMChan)
-	h := app.NewTradeHandler(host, UserDBChans, AppDBChans, SessionDBChans, WebsocketUserChans, AppDataBoltChans, UUIDChan, sendMChan, registerMChan) //Passes the session to initialize a new instance of appHandler
+	h := app.NewTradeHandler(host, UserBoltDBChans, AppDataMemDBChans, SessionDBChans, WebsocketUserChans, AppDataBoltDBChans, UUIDChan, sendMChan, registerMChan) //Passes the session to initialize a new instance of appHandler
 	server := app.NewServer(addr, h)
-	h.UserPowerUpHandler(uDBRCC, AppDataBoltChans.GetDbChan)
+	h.UserPowerUpHandler(uDBRCC, AppDataBoltDBChans.GetDbChan)
 	//Start the webserver
 	if err := server.Open(); err != nil {
 		log.Fatalf("Unable to Open Server for listen and serve: %v", err)

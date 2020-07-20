@@ -10,7 +10,7 @@ import (
 	boltdb "github.com/boltdb/bolt"
 )
 
-func UserBoltServiceFunc(UserDBChans model.UDBChans, uDBRCC chan chan *model.User) {
+func UserBoltDBServiceFunc(UserBoltDBChans model.UDBChans, uDBRCC chan chan *model.User) {
 	log.Printf("userBoltServiceFunc started")
 	var (
 		dat  model.UserDbData
@@ -29,7 +29,7 @@ func UserBoltServiceFunc(UserDBChans model.UDBChans, uDBRCC chan chan *model.Use
 		select {
 		case uDBRC := <-uDBRCC:
 			go userBoltServ.GetAllUser(uDBRC)
-		case dat = <-UserDBChans.AddDbChan:
+		case dat = <-UserBoltDBChans.AddDbChan:
 			dat.UserID, err = userBoltServ.AddUser(dat.User)
 			if err == nil {
 				dat.CallerChan <- model.UserDbResp{dat.UserID, dat.User, nil}
@@ -37,7 +37,7 @@ func UserBoltServiceFunc(UserDBChans model.UDBChans, uDBRCC chan chan *model.Use
 				log.Printf("UserBoltServiceFunc1 %v",err)
 				dat.CallerChan <- model.UserDbResp{Err: err}
 			}
-		case dat = <-UserDBChans.UpdateDbChan:
+		case dat = <-UserBoltDBChans.UpdateDbChan:
 			err = userBoltServ.UpdateUser(dat.User)
 			if err == nil {
 				dat.CallerChan <- model.UserDbResp{dat.UserID, dat.User, nil}
@@ -45,7 +45,7 @@ func UserBoltServiceFunc(UserDBChans model.UDBChans, uDBRCC chan chan *model.Use
 				log.Printf("UserBoltServiceFunc2 %v",err)
 				dat.CallerChan <- model.UserDbResp{Err: err}
 			}
-		case dat = <-UserDBChans.GetDbChan:
+		case dat = <-UserBoltDBChans.GetDbChan:
 			dat.User, err = userBoltServ.GetUser(dat.UserID)
 			if err == nil && dat.UserID == dat.User.ID {
 				dat.CallerChan <- model.UserDbResp{dat.User.ID, dat.User, nil}
@@ -53,7 +53,7 @@ func UserBoltServiceFunc(UserDBChans model.UDBChans, uDBRCC chan chan *model.Use
 				log.Printf("UserBoltServiceFunc3 %v",err)
 				dat.CallerChan <- model.UserDbResp{Err: err}
 			}
-		case datN = <-UserDBChans.GetDbByNameChan:
+		case datN = <-UserBoltDBChans.GetDbByNameChan:
 			datN.User, err = userBoltServ.GetUserByName(datN.Username)
 			if err == nil && datN.Username == datN.User.Username {
 				datN.CallerChan <- model.UserDbResp{datN.User.ID, datN.User, nil}
@@ -61,7 +61,7 @@ func UserBoltServiceFunc(UserDBChans model.UDBChans, uDBRCC chan chan *model.Use
 				log.Printf("UserBoltServiceFunc4 %v",err)				
 				datN.CallerChan <- model.UserDbResp{Err: err}
 			}
-		case dat = <-UserDBChans.DeleteDbChan:
+		case dat = <-UserBoltDBChans.DeleteDbChan:
 			err = userBoltServ.DeleteUser(dat.UserID)
 			if err != nil {
 				dat.CallerChan <- model.UserDbResp{Err: err}

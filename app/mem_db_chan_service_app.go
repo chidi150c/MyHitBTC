@@ -13,7 +13,7 @@ type MDDBChans struct {
 
 type AppDB map[model.AppID]*App
 
-func AppDBServiceFunc(AppDBChans MDDBChans, memAppDataChanChan chan chan *model.AppData) {
+func AppMemDBServiceFunc(AppMemDBChans MDDBChans, memAppDataChanChan chan chan *model.AppData) {
 	var (
 		dat AppDbServiceVehicle
 		v   *App
@@ -34,20 +34,20 @@ func AppDBServiceFunc(AppDBChans MDDBChans, memAppDataChanChan chan chan *model.
 			}
 			close(memAppDataChan)
 			every30mins = time.After(time.Minute * 30)
-		case dat = <-AppDBChans.AddOrUpdateDbChan:
+		case dat = <-AppMemDBChans.AddOrUpdateDbChan:
 			db[dat.AppID] = dat.App
 			if v, ok = db[dat.AppID]; ok && v.Data.ID == dat.AppID {
 				dat.CallerChan <- AppDbResp{v.Data.ID, v, nil}
 			} else {
 				dat.CallerChan <- AppDbResp{Err: model.ErrInternal}
 			}
-		case dat = <-AppDBChans.GetDbChan:
+		case dat = <-AppMemDBChans.GetDbChan:
 			if v, ok = db[dat.AppID]; ok && v.Data.ID == dat.AppID {
 				dat.CallerChan <- AppDbResp{v.Data.ID, v, nil}
 			} else {
 				dat.CallerChan <- AppDbResp{Err: model.ErrAppNotFound}
 			}
-		case dat = <-AppDBChans.DeleteDbChan:
+		case dat = <-AppMemDBChans.DeleteDbChan:
 			delete(db, dat.AppID)
 			if v, ok = db[dat.AppID]; ok && v.Data.ID == dat.AppID {
 				dat.CallerChan <- AppDbResp{Err: model.ErrInternal}
@@ -58,78 +58,73 @@ func AppDBServiceFunc(AppDBChans MDDBChans, memAppDataChanChan chan chan *model.
 	}
 }
 
-type AppDBService struct {
+type AppMemDBService struct {
 	session *Session
 }
 
-func (u *AppDBService) AddApp(App *App) error {
+func (u *AppMemDBService) AddApp(App *App) error {
 	CallerChan := make(chan AppDbResp)
-	u.session.appDBChans.AddOrUpdateDbChan <- AppDbServiceVehicle{App.Data.ID, App, CallerChan}
+	u.session.appMemDBChans.AddOrUpdateDbChan <- AppDbServiceVehicle{App.Data.ID, App, CallerChan}
 	apDbResp := <-CallerChan
 	return apDbResp.Err
 }
-
-
-
-func (u *AppDBService) GetApp(id model.AppID) (*App, error) {
+func (u *AppMemDBService) GetApp(id model.AppID) (*App, error) {
 	if id == 0 {
 		return nil, model.ErrAppNameEmpty
 	}
 	CallerChan := make(chan AppDbResp)
-	u.session.appDBChans.GetDbChan <- AppDbServiceVehicle{id, nil, CallerChan}
+	u.session.appMemDBChans.GetDbChan <- AppDbServiceVehicle{id, nil, CallerChan}
 	apDbResp := <-CallerChan
 	if apDbResp.App != nil && apDbResp.Err == nil {
 		return apDbResp.App, nil
 	}
 	return apDbResp.App, apDbResp.Err
 }
-func (u *AppDBService) UpdateApp(App *App) error {
+func (u *AppMemDBService) UpdateApp(App *App) error {
 	cachedUser, err := u.session.Authenticate()
 	if err != nil {
 		return err
 	}
 	// Only allow owner to update App.Data.
 	CallerChan := make(chan AppDbResp)
-	u.session.appDBChans.GetDbChan <- AppDbServiceVehicle{App.Data.ID, nil, CallerChan}
+	u.session.appMemDBChans.GetDbChan <- AppDbServiceVehicle{App.Data.ID, nil, CallerChan}
 	apDbResp := <-CallerChan
 	if apDbResp.App != nil && apDbResp.Err == nil {
 		if apDbResp.App.Data.ID != cachedUser.ApIDs[App.Data.SymbolCode] {
 			return model.ErrUnauthorized
 		}
 		u.session.cachedApp = App
-		u.session.appDBChans.AddOrUpdateDbChan <- AppDbServiceVehicle{App.Data.ID, App, CallerChan}
+		u.session.appMemDBChans.AddOrUpdateDbChan <- AppDbServiceVehicle{App.Data.ID, App, CallerChan}
 		apDbResp := <-CallerChan
 		return apDbResp.Err
 	}
 	return model.ErrAppNotFound
 }
-func (u *AppDBService) DeleteApp(id model.AppID) error {
+func (u *AppMemDBService) DeleteApp(id model.AppID) error {
 	user, err := u.session.Authenticate()
 	if err != nil {
 		return err
 	}
 	// Only allow owner to update App.Data.
 	CallerChan := make(chan AppDbResp)
-	u.session.appDBChans.GetDbChan <- AppDbServiceVehicle{id, nil, CallerChan}
+	u.session.appMemDBChans.GetDbChan <- AppDbServiceVehicle{id, nil, CallerChan}
 	apDbResp := <-CallerChan
 	if apDbResp.App != nil && apDbResp.Err == nil {
 		if apDbResp.App.Data.ID != user.ApIDs[apDbResp.App.Data.SymbolCode] {
 			return model.ErrUnauthorized
 		}
 		u.session.cachedApp = &App{}
-		u.session.appDBChans.DeleteDbChan <- AppDbServiceVehicle{id, nil, CallerChan}
+		u.session.appMemDBChans.DeleteDbChan <- AppDbServiceVehicle{id, nil, CallerChan}
 		apDbResp := <-CallerChan
 		return apDbResp.Err
 	}
 	return model.ErrAppNotFound
 }
-
 type AppDbServiceVehicle struct {
 	AppID      model.AppID
 	App        *App
 	CallerChan chan AppDbResp
 }
-
 type AppDbResp struct {
 	AppID model.AppID
 	App   *App
