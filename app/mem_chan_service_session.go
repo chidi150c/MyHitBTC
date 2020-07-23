@@ -22,21 +22,21 @@ func SessionMemDBServiceFunc(SessionMemDBChans SDBChans) {
 	db := make(SessionDB) //the mainDataBase very impotant
 	for {
 		select {
-		case dat = <-SessionDBChans.AddOrUpdateDbChan:
+		case dat = <-SessionMemDBChans.AddOrUpdateDbChan:
 			db[dat.SessionID] = dat.Session
 			if v, ok = db[dat.SessionID]; ok && v.ID == dat.SessionID {
 				dat.CallerChan <- SessionDbResp{v.ID, v, nil}
 			} else {
 				dat.CallerChan <- SessionDbResp{Err: model.ErrInternal}
 			}
-		case dat = <-SessionDBChans.GetDbChan:
+		case dat = <-SessionMemDBChans.GetDbChan:
 			if v, ok = db[dat.SessionID]; ok && v.ID == dat.SessionID {
 				dat.CallerChan <- SessionDbResp{v.ID, v, nil}
 			} else {
 				log.Printf("v %v, ok %v", v, ok)
 				dat.CallerChan <- SessionDbResp{Err: model.ErrInternal}
 			}
-		case dat = <-SessionDBChans.DeleteDbChan:
+		case dat = <-SessionMemDBChans.DeleteDbChan:
 			delete(db, dat.SessionID)
 			if v, ok = db[dat.SessionID]; ok && v.ID == dat.SessionID {
 				dat.CallerChan <- SessionDbResp{Err: model.ErrInternal}

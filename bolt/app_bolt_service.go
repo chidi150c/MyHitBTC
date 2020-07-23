@@ -34,7 +34,6 @@ func AppDataBoltDBServiceFunc(AppDataBoltDBChans model.ABDBChans, memAppDataChan
 				dat.AppData.ID = id
 				dat.CallerChan <- model.AppDataResp{id, dat.AppData, nil}
 			} else {
-				log.Printf("DB Add Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{id, nil, err}
 			}
 		case dat = <-AppDataBoltDBChans.UpdateDbChan:
@@ -43,7 +42,6 @@ func AppDataBoltDBServiceFunc(AppDataBoltDBChans model.ABDBChans, memAppDataChan
 				dat.CallerChan <- model.AppDataResp{dat.AppData.ID, dat.AppData, nil}
 				log.Printf("DB UpdateAppData %v done id: %v", dat.AppData.SymbolCode, dat.AppData.ID)
 			} else {
-				log.Printf("DB Update Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{Err: model.ErrInternal}
 			}
 		case dat = <-AppDataBoltDBChans.GetDbChan:
@@ -51,7 +49,6 @@ func AppDataBoltDBServiceFunc(AppDataBoltDBChans model.ABDBChans, memAppDataChan
 			if err == nil {
 				dat.CallerChan <- model.AppDataResp{dat.AppData.ID, dat.AppData, nil}
 			} else {
-				log.Printf("DB Get Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{Err: model.ErrInternal}
 			}
 		case dat = <-AppDataBoltDBChans.DeleteDbChan:
@@ -59,7 +56,6 @@ func AppDataBoltDBServiceFunc(AppDataBoltDBChans model.ABDBChans, memAppDataChan
 			if err == nil {
 				dat.CallerChan <- model.AppDataResp{dat.AppID, nil, nil}
 			} else {
-				log.Printf("DB Delete Error: %v", err)
 				dat.CallerChan <- model.AppDataResp{Err: model.ErrInternal}
 			}
 		case memoryAppDataChan := <-memAppDataChanChan:
@@ -127,7 +123,7 @@ func (a *AppDataService) AddAppData(appdat *model.AppData) (model.AppID, error) 
 		b := tx.Bucket([]byte("AppDatas"))
 		if err := b.ForEach(func(k, v []byte) error {
 			if err := internal.UnmarshalAppData(v, mappdat); err == nil {
-				if mappdat.ID == appdat.ID || (mappdat.SymbolCode == appdat.SymbolCode && mappdat.UsrID == appdat.UsrID) {
+				if (mappdat.ID == appdat.ID) && (mappdat.SymbolCode == appdat.SymbolCode) && (mappdat.UsrID == appdat.UsrID) {
 					appdat.ID = mappdat.ID
 					return model.ErrAppExists
 				}

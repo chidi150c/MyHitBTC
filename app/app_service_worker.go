@@ -30,6 +30,7 @@ type ppPendingData struct {
 //WorkerAppService is a tool provider for the methods, a tool can be a method or infrastructural data struct
 type WorkerAppService struct {
 	API                        api.Client
+	stopWait 				   chan bool
 	Limit                      string
 	Period                     string
 	Period2                    string
@@ -63,6 +64,7 @@ func NewWorkerAppService(mdData *model.AppData, s *Session, uuidch chan string) 
 		profitPriceResetAChan:      pPRAChan,
 		profitPriceOriginatorBChan: pPOBChan,
 		profitPriceResetBChan:      pPRBChan,
+		stopWait: 					make(chan bool),
 	}
 	w.profitPriceGenAChan = w.ProfitPriceAFunc(mdData, pPRAChan, pPOAChan)
 	w.profitPriceGenBChan = w.ProfitPriceBFunc(mdData, pPRBChan, pPOBChan)
@@ -128,14 +130,6 @@ func (w WorkerAppService) AutoTradeManager(md *App, marginChan chan MarginVeh) (
 							log.Print(md.Data.Message)
 							if strings.Contains(md.Data.Message, "App Shuting Down") && strings.Contains(md.Data.Message, "Market") {
 								break
-							} else if strings.Contains(md.Data.Message, "App Shuting Down") {
-								for {
-									msg := <-md.Chans.MessageChan
-									if strings.Contains(msg, "App Shuting Down") && strings.Contains(msg, "Market") {
-										break
-									}
-								}
-								break
 							} else {
 								continue
 							}
@@ -147,9 +141,9 @@ func (w WorkerAppService) AutoTradeManager(md *App, marginChan chan MarginVeh) (
 				}()
 			case mdChan <- AppVehicle{md, returnChan}: //MyChan: partly used by handler to feed UI
 				<-returnChan
-			case marginChan <- MarginVeh{md.Data.ID, marginParam{md.Data.SymbolCode, md.Data.SuccessfulOrders, md.Data.MadeProfitOrders, md.Data.MadeLostOrders, md.Data.TotalLost + md.Data.TotalProfit}}:
+			case marginChan <- MarginVeh{md.Data.ID, marginParam{md.Data.SymbolCode, md.Data.SuccessfulOrders, md.Data.MadeProfitOrders, md.Data.MadeLostOrders, md.Data.TotalLost + md.Data.TotalProfit}}: 
 			case md.Data.Message = <-messageChan:
-				if (strings.Contains(md.Data.Message, md.Data.MessageFilter) && md.Data.MessageFilter != "") || strings.Contains(md.Data.Message, "Reset Authorized") || strings.Contains(md.Data.Message, "OrderedAmt") || strings.Contains(md.Data.Message, "started") {
+				if (strings.Contains(md.Data.Message, md.Data.MessageFilter) && md.Data.MessageFilter != "") || strings.Contains(md.Data.Message, "Reset Authorized") || strings.Contains(md.Data.Message, "PriceTrading") || strings.Contains(md.Data.Message, "OrderedAmt") || strings.Contains(md.Data.Message, "started") {
 					log.Print(md.Data.Message)
 				}
 			case data = <-md.Chans.SetParamChan:
@@ -268,15 +262,34 @@ func (w WorkerAppService) AppShutDown(md *App) error {
 		if !isClosed(md.Chans.CloseDown) {
 			close(md.Chans.CloseDown)
 		}
-		if msg := <-md.Chans.ShutDownMessageChan; strings.Contains(msg, "App Shutdown Completed!!!") {
-			log.Printf(msg)
-			return nil
+		for{
+			select{
+			case msg := <-md.Chans.ShutDownMessageChan:
+				if strings.Contains(msg, "App Shutdown Completed!!!"){
+					log.Printf("%s %s\n", md.Data.SymbolCode, msg)
+					return nil
+				}
+			case <-time.After(time.Second * 10):		
+				md.Chans.MessageChan <- fmt.Sprintf("AppShutDown SymbolCode %s User %s Still Unable to Shutdown \n", md.Data.SymbolCode, w.user.Username)
+				continue
+			}
 		}
 	}
 	return fmt.Errorf("Unable to Delete/Shutdown App")
 }
-func waiting(t time.Duration) {
-	time.Sleep(time.Millisecond * t)
+func (w WorkerAppService) waiting(t time.Duration, ch chan bool) {
+	mili := time.After(time.Millisecond * t)
+	for {
+		select{
+		case <-mili:
+			return
+		case <-w.stopWait:
+			if !isClosed(ch) {
+				close(ch)
+			}
+			return
+		}
+	}	
 }
 
 //ResetApp resetts some params of md to their default
@@ -365,21 +378,29 @@ func (w WorkerAppService) marketTrading(md *App) {
 				md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s profitPriceFunc Shuting Down B: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 				w.profitPriceResetBChan <- false
 			}
-			if !isClosed(md.Chans.StopSellPriceTradingChan) {
-				close(md.Chans.StopSellPriceTradingChan)
-				time.Sleep(time.Millisecond * 3)
-				if !strings.Contains(md.Data.Message, "App Shuting Down") || !strings.Contains(md.Data.Message, "PriceTrading") {
-					log.Printf("last messages at Shutdown: %s\n", md.Data.Message)
+			for{
+				if !isClosed(md.Chans.StopSellPriceTradingChan) {
+					close(md.Chans.StopSellPriceTradingChan)
+					time.Sleep(time.Millisecond * 10)
+					if !strings.Contains(md.Data.Message, "App Shuting Down") || !strings.Contains(md.Data.Message, "PriceTrading") {
+						log.Printf("last messages at Shutdown: %s\n", md.Data.Message)
+						break
+					}
 					continue
 				}
+				break
 			}
-			if !isClosed(md.Chans.StopBuyPriceTradingChan) {
-				close(md.Chans.StopBuyPriceTradingChan)
-				time.Sleep(time.Millisecond * 3)
-				if !strings.Contains(md.Data.Message, "App Shuting Down") || !strings.Contains(md.Data.Message, "PriceTrading") {
-					log.Printf("last messages at Shutdown: %s\n", md.Data.Message)
+			for{
+				if !isClosed(md.Chans.StopBuyPriceTradingChan) {
+					close(md.Chans.StopBuyPriceTradingChan)
+					time.Sleep(time.Millisecond * 10)
+					if !strings.Contains(md.Data.Message, "App Shuting Down") || !strings.Contains(md.Data.Message, "PriceTrading") {
+						log.Printf("last messages at Shutdown: %s\n", md.Data.Message)
+						break
+					}
 					continue
 				}
+				break
 			}
 			md.Chans.MessageChan <- fmt.Sprintf("TradeType Market SymbolCode %s User %s App Shuting Down: | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 			return
@@ -398,7 +419,8 @@ func (w WorkerAppService) marketTrading(md *App) {
 			respChan <- true
 		default:
 			if strings.Contains(md.Data.DisableTransaction, "market") || strings.Contains(md.Data.DisableTransaction, "all trades") {
-				time.Sleep(time.Second * 300)
+				wait = 300000
+				w.waiting(wait, md.Chans.CloseDown)
 				continue
 
 			}
@@ -411,8 +433,8 @@ func (w WorkerAppService) marketTrading(md *App) {
 		if (gapPrice > ema5515Diff) && (ema5515Diff > 0.0 && ema5515Diff < math.MaxFloat64) && (gapPrice > 0.0 && gapPrice < math.MaxFloat64) {
 			md.Chans.MessageChan <- fmt.Sprintf("Error Region, because ema5515diff is less than gapPrice, so no Bussiness/n")
 			wait = 30000
-			waiting(wait)
 			gapPrice = md.Data.TickSize * md.Data.TrailPoints //to clear error region
+			w.waiting(wait, md.Chans.CloseDown)
 			continue
 		}
 		for {
@@ -423,7 +445,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 				if strings.Contains(ErrorMessage, "502 Bad Gateway") || strings.Contains(ErrorMessage, "503 Service Unavailable") || strings.Contains(ErrorMessage, "500 Internal Server") || strings.Contains(ErrorMessage, "Exchange temporary closed") {
 					time.Sleep(time.Millisecond * time.Duration(30000+<-w.Rand800))
 				} else {
-					time.Sleep(time.Second * 5)
+					wait = 5000
 				}
 				continue
 			} else if err == nil {
@@ -498,7 +520,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					wait = 3000
-					waiting(wait)
+					w.waiting(wait, md.Chans.CloseDown)
 					continue
 				}
 				//filter4
@@ -530,7 +552,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 				if (md.Data.NextMarketBuyPoint < lastPrice) && (md.Data.NextMarketBuyPoint > 0.0 && md.Data.NextMarketBuyPoint < math.MaxFloat64) {
 					md.Chans.MessageChan <- fmt.Sprintf("TradeType Market %s SymbolCode %s User %s StopLost %.8f crossing: Don't Buy above NextMarketBuyPoint %.8f at lastPrice %.8f | disabled: \"%s\"\n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.StopLostPoint, md.Data.NextMarketBuyPoint, lastPrice, md.Data.DisableTransaction)
 					wait = 3000
-					waiting(wait)
+					w.waiting(wait, md.Chans.CloseDown)
 					continue
 				}
 				//filter4
@@ -574,7 +596,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 						md.Chans.SetParamChan <- SetParam{"", 0}
 					} else {
 						wait = 3000
-						waiting(wait)
+						w.waiting(wait, md.Chans.CloseDown)
 						md.Chans.MessageChan <- fmt.Sprintf("Market %s: %s: %s: if allowed to %s will make lost so no need to allow", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side)
 						continue //if allowed will make lost so no need to allow
 					}
@@ -596,7 +618,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 						md.Chans.SetParamChan <- SetParam{"", 0}
 					} else {
 						wait = 3000
-						waiting(wait)
+						w.waiting(wait, md.Chans.CloseDown)
 
 						md.Chans.MessageChan <- fmt.Sprintf("Market %s: %s: %s:  if allowed to %s will make lost so no need to allow profitOrLost = %.8f/n", MarketStatus, md.Data.SymbolCode, w.user.Username, md.Data.Side, profitOrLost)
 						md.Chans.SetParamChan <- SetParam{"", 0}
@@ -684,7 +706,7 @@ func (w WorkerAppService) marketTrading(md *App) {
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					md.Chans.SetParamChan <- SetParam{"", 0}
 					wait = 3000
-					waiting(wait)
+					w.waiting(wait, md.Chans.CloseDown)
 					continue
 				} else {
 					//Market Decieded order success
@@ -814,12 +836,12 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 				md.Data.MainQuantity += nsp.PriceTradingStartQuantity
 				md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s md.Data.MainQuantity is updated to %.8f | nextStartPoint updated to %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, nsp.LastPrice, md.Data.DisableTransaction)
 				continue
-			default:
+			default:					
 				if strings.Contains(md.Data.DisableTransaction, "price") || strings.Contains(md.Data.DisableTransaction, "all trades") {
-					time.Sleep(time.Second * 300)
+					wait = 300)
 					continue
 				}
-				profitPoint = md.Data.MainStartPointSell * md.Data.LeastProfitMargin
+				profitPoint = md.Data.MainStartPointSell * md.Data.LeastProfitMargin					
 				for {
 					tkr, err = w.API.GetTicker(md.Data.SymbolCode)
 					if err != nil {
@@ -828,7 +850,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						if strings.Contains(ErrorMessage, "502 Bad Gateway") || strings.Contains(ErrorMessage, "503 Service Unavailable") || strings.Contains(ErrorMessage, "500 Internal Server") || strings.Contains(ErrorMessage, "Exchange temporary closed") {
 							time.Sleep(time.Millisecond * time.Duration(20000+<-w.Rand800))
 						} else {
-							time.Sleep(time.Second * 20)
+							wait = 20)
 						}
 						continue
 					}
@@ -849,6 +871,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 				}
 				//PTSell Sell profit/investment
 				if (math.Abs(md.Data.NextStartPointPrice-lastPrice) > profitPoint) && (md.Data.NextStartPointPrice < lastPrice) && (md.Data.MainStartPointSell < lastPrice) {
+					md.Chans.MessageChan <- fmt.Sprintf("TradeType1 PriceTrading SymbolCode %s User %s started to sell %.8f %s asset bought at %.8f | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity, md.Data.SymbolCode, md.Data.MainStartPointSell, md.Data.DisableTransaction)
 					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Sell ProfitPoint crossed, now to try sell of bought asset at %.8f usd | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, lastPrice, md.Data.DisableTransaction)
 					profitOrLost = ((lastPrice - md.Data.TickSize*2) - md.Data.MainStartPointSell) * md.Data.QuantityIncrement * (1.0 - md.Data.TakeLiquidityRate)
 					if profitOrLost <= 0.0 || profitOrLost >= math.MaxFloat64 {
@@ -869,7 +892,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 								ordrStatus, _, floatHolder3, err = w.placeOrder(md, floatHolder, lastPrice, "PriceTradingSell")
 								if err != nil || !strings.Contains(ordrStatus, "filled") {
 									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Still Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
-									time.Sleep(time.Second * 20)
+									wait = 20)
 									continue
 								}
 								lastPrice = lastPrice - md.Data.TickSize*2
@@ -891,7 +914,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 								}								
 							}
 						}
-						time.Sleep(time.Second * 20)
+						wait = 20)
 						continue
 					}
 					lastPrice = lastPrice - md.Data.TickSize*2
@@ -910,7 +933,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						<-sync
 						continue
 					}
-					time.Sleep(time.Second * 20)
+					wait = 20)
 					continue
 				
 				}
@@ -926,7 +949,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingBuy")
 						if err != nil || !strings.Contains(ordrStatus, "filled") {
 							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
-							time.Sleep(time.Second * 20)
+							wait = 20)
 							continue
 						}
 						lastPrice = lastPrice + md.Data.TickSize*2
@@ -953,7 +976,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.SoldQuantity, lastPrice, "PriceTradingBuy")
 						if err != nil || !strings.Contains(ordrStatus, "filled") {
 							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
-							time.Sleep(time.Second * 20)
+							wait = 20)
 							continue
 						}
 						lastPrice = lastPrice + md.Data.TickSize*2
@@ -972,7 +995,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						}					
 					} else {
 						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Reversed Hodling continues, hodled %.8f amount | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.SoldQuantity, md.Data.DisableTransaction)
-						time.Sleep(time.Second * 20)
+						wait = 20)
 						continue
 					}
 					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
@@ -985,7 +1008,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingBuy")
 					if err != nil || !strings.Contains(ordrStatus, "filled") {
 						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
-						time.Sleep(time.Second * 20)
+						wait = 20)
 						continue
 					}
 					lastPrice = lastPrice + md.Data.TickSize*2
@@ -1005,7 +1028,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessed next profitPrice as %.8f ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder, md.Data.DisableTransaction)
 					md.Data.NextStartPointPrice = lastPrice
 					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType buy OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
-					time.Sleep(time.Second * 20)
+					wait = 20)
 					continue
 				}
 				//PTSell profitPrice processed
@@ -1039,7 +1062,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 									ordrStatus, _, floatHolder3, err = w.placeOrder(md, floatHolder, lastPrice, "PriceTradingSell")
 									if err != nil || !strings.Contains(ordrStatus, "filled") {
 										md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Still Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
-										time.Sleep(time.Second * 20)
+										wait = 20)
 										continue
 									}
 									lastPrice = lastPrice - md.Data.TickSize*2
@@ -1056,7 +1079,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 								}
 							}
-							time.Sleep(time.Second * 20)
+							wait = 20)
 							continue
 						}
 						lastPrice = lastPrice - md.Data.TickSize*2
@@ -1075,7 +1098,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.HodlerQuantity, lastPrice, "PriceTradingSell")
 						if err != nil || !strings.Contains(ordrStatus, "filled") {
 							md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative Unable to place sell order: %.8f at %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, ordrStatus, md.Data.DisableTransaction)
-							time.Sleep(time.Second * 20)
+							wait = 20)
 							continue
 						}
 						lastPrice = lastPrice - md.Data.TickSize*2
@@ -1087,7 +1110,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Negative: Hodling continues, hodled %.8f amount | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.HodlerQuantity, md.Data.DisableTransaction)
 						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s profitPriceOriginator proccessing pendingA resize ...  | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, md.Data.DisableTransaction)
 						w.profitPriceOriginatorAChan <- ppPendingData{"resize", 0.0}
-						time.Sleep(time.Second * 20)
+						wait = 20)
 						continue
 					}
 					md.Chans.SetParamChan <- SetParam{"SuccessfulOrders", 1.0}					
@@ -1098,7 +1121,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					md.Data.NextStartPointPrice = lastPrice
 					md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s TransactType sell OrderedAmt %.8f UnitPrice %.8f InstantProfit %.8f TotalProfit %.8f BaseBalance %.8f BaseSold %.8f BaseBought %.8f\n", md.Data.SymbolCode, w.user.Username, floatHolder3, lastPrice, profitOrLost, md.Data.TotalProfit, md.Data.MainQuantity, md.Data.SoldQuantity, md.Data.BoughtQuantity)
 				}
-				time.Sleep(time.Second * 20)
+				wait = 20)
 			}
 		}
 	} else {
@@ -1138,7 +1161,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 				continue
 			default:
 				if strings.Contains(md.Data.DisableTransaction, "price") || strings.Contains(md.Data.DisableTransaction, "all trades") {
-					time.Sleep(time.Second * 300)
+					wait = 300)
 					continue
 				}
 				profitPoint = md.Data.MainStartPointBuy * md.Data.LeastProfitMargin
@@ -1150,7 +1173,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 						if strings.Contains(ErrorMessage, "502 Bad Gateway") || strings.Contains(ErrorMessage, "503 Service Unavailable") || strings.Contains(ErrorMessage, "500 Internal Server") || strings.Contains(ErrorMessage, "Exchange temporary closed") {
 							time.Sleep(time.Millisecond * time.Duration(20000+<-w.Rand800))
 						} else {
-							time.Sleep(time.Second * 20)
+							wait = 20)
 						}
 						continue
 					}
@@ -1168,7 +1191,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					ordrStatus, _, floatHolder3, err = w.placeOrder(md, md.Data.QuantityIncrement, lastPrice, "PriceTradingBuy")
 					if err != nil || !strings.Contains(ordrStatus, "filled") {
 						md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s Unable to place buy order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
-						time.Sleep(time.Second * 20)
+						wait = 20)
 						continue
 					}
 					lastPrice = lastPrice + md.Data.TickSize*2
@@ -1221,7 +1244,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 								ordrStatus, _, floatHolder3, err = w.placeOrder(md, floatHolder, lastPrice, "PriceTradingSell")
 								if err != nil || !strings.Contains(ordrStatus, "filled") {
 									md.Chans.MessageChan <- fmt.Sprintf("TradeType PriceTrading SymbolCode %s User %s SelfProfit Still Unable to lace sell order: %.8f status: %s | disabled: \"%s\"\n", md.Data.SymbolCode, w.user.Username, floatHolder3, ordrStatus, md.Data.DisableTransaction)
-									time.Sleep(time.Second * 20)
+									wait = 20)
 									continue
 								}
 								lastPrice = lastPrice - md.Data.TickSize*2
@@ -1243,7 +1266,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 								md.Data.NextStartPointPrice = lastPrice
 							}
 						}
-						time.Sleep(time.Second * 20)  
+						wait = 20)  
 						continue
 					}
 					lastPrice = lastPrice - md.Data.TickSize*2
@@ -1265,7 +1288,7 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 					md.Data.NextStartPointPrice = lastPrice
 				}
 			}
-			time.Sleep(time.Second * 20)
+			wait = 20)
 		}
 	}
 }
@@ -1479,13 +1502,13 @@ func (w WorkerAppService) placeOrder(md *App, quantity, lastPrice float64, calle
 		price = lastPrice + md.Data.TickSize*2
 	}
 	if side == "buy" && strings.Contains(md.Data.DisableTransaction, "buy") {
-		time.Sleep(time.Second * 60)
+		wait = 60)
 		return "", price, quantity, errors.New("Buy Transaction Totally Disabled")
 	} else if side == "sell" && strings.Contains(md.Data.DisableTransaction, "sell") {
-		time.Sleep(time.Second * 60)
+		wait = 60)
 		return "", price, quantity, errors.New("Sell Transaction Totally Disabled")
 	} else if strings.Contains(md.Data.DisableTransaction, "both") {
-		time.Sleep(time.Second * 300)
+		wait = 300)
 		return "", price, quantity, errors.New("Both Sell and Buy Transactions Totally Disabled")
 	}
 	i = 0
@@ -1660,7 +1683,7 @@ func (w WorkerAppService) GetEmaFunc(md *App) EmaData {
 			if strings.Contains(ErrorMessage, "502 Bad Gateway") || strings.Contains(ErrorMessage, "503 Service Unavailable") || strings.Contains(ErrorMessage, "500 Internal Server") || strings.Contains(ErrorMessage, "Exchange temporary closed") {
 				time.Sleep(time.Millisecond * time.Duration(5000+<-w.Rand800))
 			} else {
-				time.Sleep(time.Second * 5)
+				wait = 5)
 			}
 			continue
 		}

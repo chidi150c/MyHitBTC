@@ -22,8 +22,8 @@ type Session struct {
 	cachedApp     *App
 	appMemDBChans    MDDBChans
 	appMemDBService    AppMemDBService
-	appBoltDBChans    MDDBChans
-	appBoltDBService    AppMemDBService
+	appBoltDBChans    model.ABDBChans
+	appBoltDBService    AppBoltDBService 
 	userBoltDBChans   model.UDBChans
 	userBoltDBService   UserBoltDBService
 	workerAppService WorkerAppService
@@ -31,13 +31,15 @@ type Session struct {
 	websocketUSChans WUSChans
 }
 
-func NewSession(uchans model.UDBChans, mdchans MDDBChans, wuschans WUSChans) Session {
+func NewSession(uchans model.UDBChans, abdbchans model.ABDBChans, mdchans MDDBChans, wuschans WUSChans) Session {
 	s := Session{
-		userDBChans: uchans,
-		appDBChans:  mdchans,
+		userBoltDBChans: uchans,
+		appBoltDBChans: abdbchans,
+		appMemDBChans:  mdchans,
 		websocketUSChans: wuschans,
 	}
-	s.userDBService.session = &s
+	s.userBoltDBService.session = &s
+	s.appBoltDBService.session = &s
 	return s
 }
 

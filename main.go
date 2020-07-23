@@ -62,7 +62,7 @@ func main() {
 	//AppDataBoltServiceFunc provides in boltDB app storage service. Direct app read/write with boltDB was prevented for faster access achieved by memory read/write  
 	go bolt.AppDataBoltDBServiceFunc(AppDataBoltDBChans, memAppDataChanChan)
 	//AppDBServiceFunc privides in memory app storage for faster operation  
-	go app.AppDataMemDBServiceFunc(AppMemDBChans, memAppDataChanChan)
+	go app.AppMemDBServiceFunc(AppMemDBChans, memAppDataChanChan)
 	go app.SessionMemDBServiceFunc(SessionMemDBChans)
 	go app.WebsocketUserServiceFunc(WebsocketUserChans)
 	UUIDChan := make(chan string)
@@ -70,7 +70,7 @@ func main() {
 	sendMChan := make(chan chan app.MarginDB)
 	registerMChan := make(chan app.MarginDBVeh)
 	go app.MarginCal(registerMChan, sendMChan)
-	h := app.NewTradeHandler(host, UserBoltDBChans, AppDataMemDBChans, SessionDBChans, WebsocketUserChans, AppDataBoltDBChans, UUIDChan, sendMChan, registerMChan) //Passes the session to initialize a new instance of appHandler
+	h := app.NewTradeHandler(host, UserBoltDBChans, AppMemDBChans, SessionMemDBChans, WebsocketUserChans, AppDataBoltDBChans, UUIDChan, sendMChan, registerMChan) //Passes the session to initialize a new instance of appHandler
 	server := app.NewServer(addr, h)
 	h.UserPowerUpHandler(uDBRCC, AppDataBoltDBChans.GetDbChan)
 	//Start the webserver

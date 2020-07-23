@@ -2,15 +2,16 @@ package app
 
 import (
 	"bufio"
-	"os"
 	"encoding/json"
 	"fmt"
 	"log"
 	"myhitbtcv4/model"
 	"myhitbtcv4/webClient"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -66,7 +67,7 @@ func NewTradeHandler(host string, uchans model.UDBChans, mdchans MDDBChans, scha
 		MarginRegisterChan: registerMChan,
 		boltDbChans:        abdbchans,
 	}
-	s := NewSession(uchans, mdchans, wuschans)
+	s := NewSession(uchans, abdbchans, mdchans, wuschans)
 	h.sessionDBService = SessionDBService{
 		sessionDBChans: schans,
 		session:        s,
@@ -112,7 +113,7 @@ func (h TradeHandler) userMessageDownloadHandler(w http.ResponseWriter, r *http.
 	token := r.FormValue("Token")
 	// is there a username?
 	CallerChan := make(chan model.UserDbResp)
-	h.sessionDBService.session.userDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
+	h.sessionDBService.session.userBoltDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
 	dbResp := <-CallerChan
 	if dbResp.User == nil || dbResp.Err != nil || dbResp.User.Username != username {
 		http.Error(w, "Username not Found", http.StatusForbidden)
@@ -123,7 +124,7 @@ func (h TradeHandler) userMessageDownloadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	readFile, err :=  os.OpenFile("./nohup.out", os.O_RDONLY, 0600)
+	readFile, err := os.OpenFile("./nohup.out", os.O_RDONLY, 0600)
 	if err != nil {
 		fmt.Printf("failed to open file: %v", err)
 	}
@@ -140,13 +141,14 @@ func (h TradeHandler) userMessageDownloadHandler(w http.ResponseWriter, r *http.
 	}
 	return
 }
+
 //indexHandler delivers the Home page to the user
 func (h TradeHandler) newVerWriteHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("Username")
 	token := r.FormValue("Token")
 	// is there a username?
 	CallerChan := make(chan model.UserDbResp)
-	h.sessionDBService.session.userDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
+	h.sessionDBService.session.userBoltDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
 	dbResp := <-CallerChan
 	if dbResp.User == nil || dbResp.Err != nil || dbResp.User.Username != username {
 		http.Error(w, "Username not Found", http.StatusForbidden)
@@ -161,7 +163,7 @@ func (h TradeHandler) newVerWriteHandler(w http.ResponseWriter, r *http.Request)
 	i := 0
 	webJSONData := make([]*model.AppData, len(dbResp.User.ApIDs))
 	for _, v := range dbResp.User.ApIDs {
-		h.sessionDBService.session.appDBChans.GetDbChan <- AppDbServiceVehicle{v, nil, AppCallerRespChan}
+		h.sessionDBService.session.appMemDBChans.GetDbChan <- AppDbServiceVehicle{v, nil, AppCallerRespChan}
 		Res := <-AppCallerRespChan
 		AppVeh := <-Res.App.Chans.MyChan
 		AppVeh.RespChan <- true
@@ -259,7 +261,7 @@ func (h TradeHandler) newVerReadHandler(w http.ResponseWriter, r *http.Request) 
 			}
 			for i := 0; i < len(WebJSONData); i++ {
 				//Check if symbol is already trading
-				_, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[WebJSONData[i].SymbolCode])
+				_, err := h.sessionDBService.session.appMemDBService.GetApp(user.ApIDs[WebJSONData[i].SymbolCode])
 				if err != model.ErrAppNameEmpty && err != model.ErrAppNotFound {
 					http.Error(w, "Symbol Already Trading ", http.StatusInternalServerError)
 					return
@@ -294,12 +296,13 @@ func (h TradeHandler) newVerReadHandler(w http.ResponseWriter, r *http.Request) 
 					log.Printf("newVerReadHandler2 %v\n", err)
 					return
 				}
-				h, err = h.syncParams(user, md, "add")
+				h, err = h.syncParams(user, md, "addBolt")
 				if err != nil {
 					log.Printf("newVerReadHandler3 %v\n", err)
 					return
 				}
 			}
+			log.Printf("%d completed !!!!!!!", len(WebJSONData))
 			http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
 			return
 		}
@@ -310,6 +313,7 @@ func (h TradeHandler) newVerReadHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	return
 }
+
 //indexHandler delivers the Home page to the user
 func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := AlreadyLoggedIn(w, r, &h)
@@ -328,42 +332,43 @@ func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var dat AppVehicle
 	for i := 0; i < len(WebJSONData); i++ {
 		//Check if symbol is already trading
-		dataOfApp, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[WebJSONData[i].SymbolCode])
+		dataOfApp, err := h.sessionDBService.session.appMemDBService.GetApp(user.ApIDs[WebJSONData[i].SymbolCode])
 		if err != model.ErrAppNameEmpty && err != model.ErrAppNotFound {
 			//save the connection
 			log.Printf("%s Already Exist", WebJSONData[i].SymbolCode)
 			dat = <-dataOfApp.Chans.MyChan
-			dat.App.Data.DisableTransaction =  WebJSONData[i].DisableTransaction
-			dat.App.Data.MessageFilter =  WebJSONData[i].MessageFilter
-			dat.App.Data.NeverBought =  WebJSONData[i].NeverBought
-			dat.App.Data.NeverSold =  WebJSONData[i].NeverSold
-			dat.App.Data.QuantityIncrement =  WebJSONData[i].QuantityIncrement
-			dat.App.Data.TickSize =  WebJSONData[i].TickSize
-			dat.App.Data.TakeLiquidityRate =  WebJSONData[i].TakeLiquidityRate
-			dat.App.Data.SuccessfulOrders =  WebJSONData[i].SuccessfulOrders
-			dat.App.Data.MadeProfitOrders =  WebJSONData[i].MadeProfitOrders
-			dat.App.Data.MadeLostOrders =  WebJSONData[i].MadeLostOrders
-			dat.App.Data.StopLostPoint =  WebJSONData[i].StopLostPoint
-			dat.App.Data.TrailPoints =  WebJSONData[i].TrailPoints
-			dat.App.Data.LeastProfitMargin =  WebJSONData[i].LeastProfitMargin
-			dat.App.Data.SureTradeFactor =  WebJSONData[i].SureTradeFactor
-			dat.App.Data.Hodler =  WebJSONData[i].Hodler
-			dat.App.Data.GoodBiz =  WebJSONData[i].GoodBiz
-			dat.App.Data.InstantProfit =  WebJSONData[i].InstantProfit
-			dat.App.Data.InstantLost =  WebJSONData[i].InstantLost
-			dat.App.Data.TotalProfit =  WebJSONData[i].TotalProfit
-			dat.App.Data.TotalLost =  WebJSONData[i].TotalLost
-			dat.App.Data.PendingA =  WebJSONData[i].PendingA
-			dat.App.Data.PendingB =  WebJSONData[i].PendingB			
+			dat.App.Data.DisableTransaction = WebJSONData[i].DisableTransaction
+			dat.App.Data.MessageFilter = WebJSONData[i].MessageFilter
+			dat.App.Data.NeverBought = WebJSONData[i].NeverBought
+			dat.App.Data.NeverSold = WebJSONData[i].NeverSold
+			dat.App.Data.QuantityIncrement = WebJSONData[i].QuantityIncrement
+			dat.App.Data.TickSize = WebJSONData[i].TickSize
+			dat.App.Data.TakeLiquidityRate = WebJSONData[i].TakeLiquidityRate
+			dat.App.Data.SuccessfulOrders = WebJSONData[i].SuccessfulOrders
+			dat.App.Data.MadeProfitOrders = WebJSONData[i].MadeProfitOrders
+			dat.App.Data.MadeLostOrders = WebJSONData[i].MadeLostOrders
+			dat.App.Data.StopLostPoint = WebJSONData[i].StopLostPoint
+			dat.App.Data.TrailPoints = WebJSONData[i].TrailPoints
+			dat.App.Data.LeastProfitMargin = WebJSONData[i].LeastProfitMargin
+			dat.App.Data.SureTradeFactor = WebJSONData[i].SureTradeFactor
+			dat.App.Data.Hodler = WebJSONData[i].Hodler
+			dat.App.Data.GoodBiz = WebJSONData[i].GoodBiz
+			dat.App.Data.InstantProfit = WebJSONData[i].InstantProfit
+			dat.App.Data.InstantLost = WebJSONData[i].InstantLost
+			dat.App.Data.TotalProfit = WebJSONData[i].TotalProfit
+			dat.App.Data.TotalLost = WebJSONData[i].TotalLost
+			dat.App.Data.PendingA = WebJSONData[i].PendingA
+			dat.App.Data.PendingB = WebJSONData[i].PendingB
 			dat.RespChan <- true
 			h, err = h.syncParams(user, dat.App, "updateBolt")
 			if err != nil {
-				log.Printf("newVerReadHandler3 %v\n", err)
+				log.Printf("%s AppUpload Error %v\n", dat.App.Data.SymbolCode, err)
 				return
 			}
 			continue
 		}
-		//Iniialling worker service for this session
+		//Initialling worker service for this session
+		log.Printf("%s Is New", WebJSONData[i].SymbolCode)
 		md := &App{}
 		//md.Data = convertOld2New(WebJSONData[i])
 		md.Data = WebJSONData[i]
@@ -393,16 +398,16 @@ func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("newVerReadHandler2 %v\n", err)
 			return
 		}
-		h, err = h.syncParams(user, md, "add")
+		h, err = h.syncParams(user, md, "addBolt")
 		if err != nil {
 			log.Printf("newVerReadHandler3 %v\n", err)
 			return
 		}
 	}
+	log.Printf("%d completed !!!!!!!", len(WebJSONData))
 	http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
 	return
 }
-
 
 //indexHandler delivers the Home page to the user
 func (h TradeHandler) indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -429,7 +434,7 @@ func AlreadyLoggedIn(w http.ResponseWriter, r *http.Request, h *TradeHandler) (*
 		return nil, false
 	}
 	if userClaims, ok := token.Claims.(*claims); ok && token.Valid {
-		user, err := h.sessionDBService.session.userDBService.GetUserByName(userClaims.Username)
+		user, err := h.sessionDBService.session.userBoltDBService.GetUserByName(userClaims.Username)
 		if err == nil {
 			userSession, err := h.sessionDBService.GetSession(user.SessID)
 			if err != nil {
@@ -503,7 +508,7 @@ func (h TradeHandler) UserPowerUpHandler(uDBRCC chan chan *model.User, GetDbChan
 				log.Printf("For %s: %s: Error %v\n", user.Username, md.Data.SymbolCode, err)
 				continue
 			}
-			h, err = h.syncParams(user, md, "add")
+			h, err = h.syncParams(user, md, "updateBolt")
 			if err != nil {
 				log.Printf("For %s: %s: Error %v\n", user.Username, md.Data.SymbolCode, err)
 				continue
@@ -524,7 +529,7 @@ func (h TradeHandler) userSignUpHandler(w http.ResponseWriter, r *http.Request) 
 		// username taken?
 		username := r.FormValue("username")
 		CallerChan := make(chan model.UserDbResp)
-		h.sessionDBService.session.userDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
+		h.sessionDBService.session.userBoltDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
 		dbResp := <-CallerChan
 		if dbResp.User != nil && dbResp.Err == nil && dbResp.User.Username == username {
 			http.Error(w, "Username already taken", http.StatusForbidden)
@@ -547,7 +552,7 @@ func (h TradeHandler) userSignUpHandler(w http.ResponseWriter, r *http.Request) 
 		//Promote session
 		h.sessionDBService.session.ID = model.SessionID(<-h.uuidChan)
 		//sync user and session and add them to their DBs
-		h.sessionDBService.session.userDBChans.AddDbChan <- model.UserDbData{0, &user, CallerChan}
+		h.sessionDBService.session.userBoltDBChans.AddDbChan <- model.UserDbData{0, &user, CallerChan}
 		dbResp = <-CallerChan
 		user.ID = dbResp.UserID
 		h, err = h.syncParams(&user, nil, "add")
@@ -577,7 +582,7 @@ func (h TradeHandler) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 		// is there a username?
 		CallerChan := make(chan model.UserDbResp)
-		h.sessionDBService.session.userDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
+		h.sessionDBService.session.userBoltDBChans.GetDbByNameChan <- model.UserDbByNameData{username, nil, CallerChan}
 		dbResp = <-CallerChan
 		if dbResp.User == nil || dbResp.Err != nil || dbResp.User.Username != username {
 			http.Error(w, "Username not Found", http.StatusForbidden)
@@ -598,7 +603,7 @@ func (h TradeHandler) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Unable to creat Session please signUp", http.StatusForbidden)
 			log.Printf("%v\n", sDbResp.Err)
 			return
-		}		
+		}
 		h.sessionDBService.session = *sDbResp.Session
 		// create web session
 		h.sessionDBService.session.SetToken(w, r, dbResp.User.Username, dbResp.User.ID, "/", dbResp.User.Level)
@@ -651,7 +656,7 @@ func (h TradeHandler) userAddAppHandler(w http.ResponseWriter, r *http.Request) 
 		for _, symbol = range symbols {
 			hboltDbChansAddDbChan = h.boltDbChans.AddDbChan
 			//Check if symbol is already trading
-			_, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[symbol])
+			_, err := h.sessionDBService.session.appMemDBService.GetApp(user.ApIDs[symbol])
 			// if already exist ask the user whether it should be delete and return
 			if err != model.ErrAppNameEmpty && err != model.ErrAppNotFound {
 				dat := GetAppDataStringified{
@@ -770,6 +775,7 @@ func (h TradeHandler) userMarginAppHandler(w http.ResponseWriter, r *http.Reques
 	}
 	return
 }
+
 type MarginData struct {
 	GrandMargin string
 	Margins     []Margin
@@ -781,6 +787,7 @@ type Margin struct {
 	MadeLostOrders   string
 	Value            string
 }
+
 func (h TradeHandler) userResetAppHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := AlreadyLoggedIn(w, r, &h)
 	if !ok {
@@ -789,11 +796,11 @@ func (h TradeHandler) userResetAppHandler(w http.ResponseWriter, r *http.Request
 	}
 	sync := make(chan bool, 1)
 	id := r.FormValue("appid")
-	app, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[id])
+	app, err := h.sessionDBService.session.appMemDBService.GetApp(user.ApIDs[id])
 	if err != nil {
 		return
 	}
-	h, err = h.syncParams(user, app, "update")
+	h, err = h.syncParams(user, app, "updateBolt")
 	if err != nil {
 		log.Printf("userResetAppHandler1 %v\n", err)
 		return
@@ -837,7 +844,7 @@ func (h TradeHandler) userFeedsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
-	dataOfApp, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[data.SymbolCode])
+	dataOfApp, err := h.sessionDBService.session.appMemDBService.GetApp(user.ApIDs[data.SymbolCode])
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		http.Error(w, "Internal server error: "+errStr, http.StatusInternalServerError)
@@ -907,34 +914,36 @@ func (h TradeHandler) userCloseUserSocketHandler(w http.ResponseWriter, r *http.
 	http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
 	return
 }
+
 //GetAppDataStringified ..
 type GetAppDataStringified struct {
-	Secret               string `json:"secret"`
-	PublicKey            string `json:"publickey"`
-	SymbolCode           string `json:"symbolcode"`
-	SuccessfulOrders     string `json:"successfulorders"`
-	MadeProfitOrders     string `json:"madeprofitorders"`
-	TotalProfit          string `json:"totalprofit"`
-	InstantProfit        string `json:"instantprofit"`
-	Message              string `json:"message"`
-	GoodBiz              string `json:"goodbiz"`
-	LeastProfitMargin    string `json:"leastprofitmargin"`
-	DisableTransaction   string `json:"disabletransaction"`
-	QuantityIncrement    string `json:"quantityincrement"`
-	MessageFilter        string `json:"messagefilter"`
-	NeverBought          string `json:"neverbought"`
-	PendingA             string `json:"pendinga"`
-	PendingB             string `json:"pendingb"`
-	NeverSold            string `json:"neversold"`
-	StopLostPoint string `json:"stoplostpoint"`
-	TrailPoints          string `json:"trailpoints"`
-	SureTradeFactor      string `json:"suretradefactor"`
-	TotalLost            string `json:"totallost"`
-	InstantLost          string `json:"instantlost"`
-	MadeLostOrders       string `json:"madelostorders"`
-	Hodler               string `json:"hodler"`
-	DeleteMessage        string `json:"deleteMessage"`
+	Secret             string `json:"secret"`
+	PublicKey          string `json:"publickey"`
+	SymbolCode         string `json:"symbolcode"`
+	SuccessfulOrders   string `json:"successfulorders"`
+	MadeProfitOrders   string `json:"madeprofitorders"`
+	TotalProfit        string `json:"totalprofit"`
+	InstantProfit      string `json:"instantprofit"`
+	Message            string `json:"message"`
+	GoodBiz            string `json:"goodbiz"`
+	LeastProfitMargin  string `json:"leastprofitmargin"`
+	DisableTransaction string `json:"disabletransaction"`
+	QuantityIncrement  string `json:"quantityincrement"`
+	MessageFilter      string `json:"messagefilter"`
+	NeverBought        string `json:"neverbought"`
+	PendingA           string `json:"pendinga"`
+	PendingB           string `json:"pendingb"`
+	NeverSold          string `json:"neversold"`
+	StopLostPoint      string `json:"stoplostpoint"`
+	TrailPoints        string `json:"trailpoints"`
+	SureTradeFactor    string `json:"suretradefactor"`
+	TotalLost          string `json:"totallost"`
+	InstantLost        string `json:"instantlost"`
+	MadeLostOrders     string `json:"madelostorders"`
+	Hodler             string `json:"hodler"`
+	DeleteMessage      string `json:"deleteMessage"`
 }
+
 func (h TradeHandler) userEditAppHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := AlreadyLoggedIn(w, r, &h)
 	if !ok {
@@ -946,7 +955,7 @@ func (h TradeHandler) userEditAppHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Symbol is Empty Unable to edit", http.StatusInternalServerError)
 		return
 	}
-	dataOfApp, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[idcode])
+	dataOfApp, err := h.sessionDBService.session.appMemDBService.GetApp(user.ApIDs[idcode])
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		http.Error(w, "Internal server error: "+errStr, http.StatusInternalServerError)
@@ -1024,20 +1033,46 @@ func (h TradeHandler) userDeleteAllAppHandler(w http.ResponseWriter, r *http.Req
 	h, err = h.syncParams(user, nil, "update")
 	if err != nil {
 		log.Printf("userDeleteAllAppHandler1 %v\n", err)
+		http.Error(w, "Server Error", http.StatusInternalServerError)
 		return
 	}
 	if Replaced {
-		for _, v := range user.ApIDs {
-			app, err = h.sessionDBService.session.appDBService.GetApp(v)
+		wg := sync.WaitGroup{}
+		wg.Add(len(user.ApIDs))
+		for k, v := range user.ApIDs {	
+			h, err = h.syncParams(user, nil, "update")
 			if err != nil {
-				log.Printf("userDeleteAllAppHandler2 %v\n", err)
+				log.Printf("userDeleteAllAppHandler5 %v\n", err)
+				http.Error(w, "Server Error", http.StatusInternalServerError)
 				return
+			}	
+			app, err = h.sessionDBService.session.appMemDBService.GetApp(v)
+			if err == model.ErrAppNotFound {
+				_, err := h.sessionDBService.session.appBoltDBService.GetApp(v)
+				if err != nil {					
+					//removing app id from user
+					log.Printf("userDeleteAllAppHandler2.0 %v\n", err)
+					continue
+				}
+				//Deleting app from Bolt DB
+				err = h.sessionDBService.session.appBoltDBService.DeleteApp(v)
+				if err != nil {
+					log.Printf("userDeleteAppHandler2.1 %v\n", err)
+					continue
+				}
+				//removing app id from user
+				delete(user.ApIDs, k)	
+				continue
+			} else if err != nil {
+				log.Printf("userDeleteAllAppHandler2.2 %v\n", err)
+				continue
 			}
 			//Closing down websocket
 			go func() {
 				_ = h.sessionDBService.session.websocketUserService.CloseSocket(user, app.Data.SymbolCode)
 			}()
 			//Deleting app chan from margin register
+			log.Printf("working on %s \n",app.Data.SymbolCode)
 			go func() {
 				mar := MarginDBVeh{
 					ID:          app.Data.ID,
@@ -1047,25 +1082,40 @@ func (h TradeHandler) userDeleteAllAppHandler(w http.ResponseWriter, r *http.Req
 				h.MarginRegisterChan <- mar
 			}()
 			//Shutting down app finally
-			err = h.sessionDBService.session.workerAppService.AppShutDown(app)
-			if err != nil {
-				log.Printf("userDeleteAllAppHandler3 %v\n", err)
-				return
-			}
-			//Deleting app from DB
-			err = h.sessionDBService.session.appDBService.DeleteApp(app.Data.ID)
+			go func(){
+				err = h.sessionDBService.session.workerAppService.AppShutDown(app)
+				if err != nil {
+					log.Printf("userDeleteAllAppHandler3 %v\n", err)
+					http.Error(w, "Server Error", http.StatusInternalServerError)
+				}
+				wg.Done()
+			}()			
+			//Deleting app from Mem DB
+			err = h.sessionDBService.session.appMemDBService.DeleteApp(app.Data.ID)
 			if err != nil {
 				log.Printf("userDeleteAllAppHandler4 %v\n", err)
+				http.Error(w, "Server Error", http.StatusInternalServerError)
+				return
+			}
+			//Deleting app from Bolt DB
+			err = h.sessionDBService.session.appBoltDBService.DeleteApp(app.Data.ID)
+			if err != nil {
+				log.Printf("userDeleteAppHandler6 %v\n", err)
+				http.Error(w, "Server Error", http.StatusInternalServerError)
 				return
 			}
 			//removing app id from user
 			delete(user.ApIDs, app.Data.SymbolCode)
+			log.Printf("Completed %s deleting!!! \n", app.Data.SymbolCode)		
 		}
+		wg.Wait()
 		h, err = h.syncParams(user, nil, "update")
 		if err != nil {
 			log.Printf("userDeleteAllAppHandler5 %v\n", err)
+			http.Error(w, "Server Error", http.StatusInternalServerError)
 			return
 		}
+		log.Printf("Completed All deleting!!! \n")
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -1089,9 +1139,25 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 		//This is a way to show that this is the second request with a POST method confirmaing going ahead to delete
 		Replaced = true
 	}
-	app, err := h.sessionDBService.session.appDBService.GetApp(user.ApIDs[id])
-	if err != nil {
-		log.Printf("userDeleteAppHandler1 %v\n", err)
+	app, err := h.sessionDBService.session.appMemDBService.GetApp(user.ApIDs[id])
+	if err == model.ErrAppNotFound {
+		_, err := h.sessionDBService.session.appBoltDBService.GetApp(user.ApIDs[id])
+		if err != nil {					
+			//removing app id from user
+			log.Printf("userDeleteAllAppHandler2.0 %v\n", err)
+			return
+		}
+		//Deleting app from Bolt DB
+		err = h.sessionDBService.session.appBoltDBService.DeleteApp(user.ApIDs[id])
+		if err != nil {
+			log.Printf("userDeleteAppHandler2.1 %v\n", err)
+			return
+		}
+		//removing app id from user
+		delete(user.ApIDs, id)	
+		return
+	} else if err != nil {
+		log.Printf("userDeleteAllAppHandler2.2 %v\n", err)
 		return
 	}
 	h, err = h.syncParams(user, nil, "update")
@@ -1123,9 +1189,16 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 			log.Printf("userDeleteAppHandler3 %v\n", err)
 			return
 		}
-		err = h.sessionDBService.session.appDBService.DeleteApp(app.Data.ID)
+		// Deleting App from Mem DB
+		err = h.sessionDBService.session.appMemDBService.DeleteApp(app.Data.ID)
 		if err != nil {
 			log.Printf("userDeleteAppHandler4 %v\n", err)
+			return
+		}
+		// Deleting App from Bolt DB
+		err = h.sessionDBService.session.appBoltDBService.DeleteApp(app.Data.ID)
+		if err != nil {
+			log.Printf("userDeleteAppHandler6 %v\n", err)
 			return
 		}
 		delete(user.ApIDs, app.Data.SymbolCode)
@@ -1133,14 +1206,6 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			log.Printf("userDeleteAppHandler5 %v\n", err)
 			return
-		}		
-		CallerChan := make(chan model.AppDataResp)
-		h.boltDbChans.DeleteDbChan <- model.AppDataBoltVehicle{app.Data.ID,app.Data,CallerChan}
-		delResp := <-CallerChan
-		if delResp.Err != nil {
-			log.Printf("DB Update Error: %v\n", delResp)
-		}else{
-			log.Printf("DB Update: %s Deleted succesfully\n", app.Data.SymbolCode)
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -1182,10 +1247,12 @@ func (h TradeHandler) userGetAppListHandler(w http.ResponseWriter, r *http.Reque
 	}
 	return
 }
+
 //WebData ...
 type WebData struct {
 	Symbols []string
 }
+
 // logoutHandler deletes the cookie
 func (h TradeHandler) userlogoutHandler(w http.ResponseWriter, r *http.Request) {
 	h.sessionDBService.session.logout(w, r)
@@ -1219,13 +1286,32 @@ func (h TradeHandler) syncParams(user *model.User, md *App, action string) (Trad
 	h.sessionDBService.session.workerAppService.user = user
 	//initiallize DB services
 	//initiallize app DB service
-	h.sessionDBService.session.appDBService.session = &h.sessionDBService.session
+	h.sessionDBService.session.appMemDBService.session = &h.sessionDBService.session
+	h.sessionDBService.session.appBoltDBService.session = &h.sessionDBService.session
 	//initiallize user DB service
-	h.sessionDBService.session.userDBService.session = &h.sessionDBService.session
+	h.sessionDBService.session.userBoltDBService.session = &h.sessionDBService.session
 	//store user, session and app
-	if action == "updateBolt" {
+	if action == "update" {
+		err = h.sessionDBService.session.userBoltDBService.UpdateUser(user)
+		if err != nil {
+			log.Printf("syncParams1 %v", err)
+			return h, err
+		}
+		err = h.sessionDBService.UpdateSession(&h.sessionDBService.session)
+		if err != nil {
+			log.Printf("syncParams2 %v", err)
+			return h, err
+		}
+		if md != nil {
+			err = h.sessionDBService.session.appMemDBService.UpdateApp(md)
+			if err != nil {
+				log.Printf("syncParams3 %v", err)
+				return h, err
+			}
+		}
+	} else if action == "updateBolt" {
 		// User is not stored in memory it is already being stored and updated directly into the bolt database created at signup so you can only update
-		err = h.sessionDBService.session.userDBService.UpdateUser(user)
+		err = h.sessionDBService.session.userBoltDBService.UpdateUser(user)
 		if err != nil {
 			log.Printf("syncParams1 %v", err)
 			return h, err
@@ -1238,49 +1324,37 @@ func (h TradeHandler) syncParams(user *model.User, md *App, action string) (Trad
 		}
 		if md != nil {
 			// md has both memory and bolt database storages, the app functions interact with its memory stored copy for faster access to md
-			err = h.sessionDBService.session.appDBService.UpdateApp(md)
+			err = h.sessionDBService.session.appMemDBService.UpdateApp(md)
 			if err != nil {
 				log.Printf("syncParams3 %v", err)
 				return h, err
 			}
-			CallerChan  := make(chan model.AppDataResp)
-			h.boltDbChans.UpdateDbChan <- model.AppDataBoltVehicle{md.Data.ID, md.Data,CallerChan}
-			updResp := <-CallerChan
-			if updResp.Err != nil {
-				log.Printf("DB App Update Err: %v\n", updResp.Err)
-			}else{
-				fmt.Printf("mdUpdate done successfully")
-			}
-			CallerChan2  := make(chan model.UserDbResp)
-			h.sessionDBService.session.userDBChans.UpdateDbChan <-model.UserDbData{user.ID, user, CallerChan2}
-			updResp2 := <-CallerChan2
-			if updResp2.Err != nil {
-				log.Printf("DB User Update Err: %v\n", updResp2.Err)
-			}else{
-				fmt.Printf("userUpdate done successfully")
-			}
-		}
-	}else if action == "update" {
-		err = h.sessionDBService.session.userDBService.UpdateUser(user)
-		if err != nil {
-			log.Printf("syncParams1 %v", err)
-			return h, err
-		}
-		err = h.sessionDBService.UpdateSession(&h.sessionDBService.session)
-		if err != nil {
-			log.Printf("syncParams2 %v", err)
-			return h, err
-		}
-		if md != nil {
-			err = h.sessionDBService.session.appDBService.UpdateApp(md)
+			err = h.sessionDBService.session.appBoltDBService.UpdateApp(md.Data)
 			if err != nil {
-				log.Printf("syncParams3 %v", err)
+				log.Printf("syncParams4 %v", err)
 				return h, err
+			} else {
+				log.Printf("mdUpdate done successfully")
 			}
 		}
-	} else if action == "addBolt" {
+	} else if action == "addBolt" && md != nil {
+		ndId, err := h.sessionDBService.session.appBoltDBService.AddApp(md.Data)
+		if err != nil {
+			log.Printf("syncParams6 %v", err)
+			return h, err
+		}
+		//user - app ID sync
+		md.Data.ID = ndId
+		user.ApIDs[md.Data.SymbolCode] = md.Data.ID
+		h.sessionDBService.session.ApID = md.Data.ID
+
+		err = h.sessionDBService.session.appMemDBService.AddApp(md)
+		if err != nil {
+			log.Printf("syncParams6 %v", err)
+			return h, err
+		}
 		//store user, session and app
-		err = h.sessionDBService.session.userDBService.UpdateUser(user)
+		err = h.sessionDBService.session.userBoltDBService.UpdateUser(user)
 		if err != nil {
 			log.Printf("syncParams1 %v", err)
 			return h, err
@@ -1289,33 +1363,10 @@ func (h TradeHandler) syncParams(user *model.User, md *App, action string) (Trad
 		if err != nil {
 			log.Printf("syncParams5 %v", err)
 			return h, err
-		}
-		if md != nil {
-			err = h.sessionDBService.session.appDBService.AddApp(md)
-			if err != nil {
-				log.Printf("syncParams6 %v", err)
-				return h, err
-			}
-			CallerChan  := make(chan model.AppDataResp)
-			h.boltDbChans.AddDbChan <- model.AppDataBoltVehicle{md.Data.ID, md.Data,CallerChan}
-			updResp := <-CallerChan
-			if updResp.Err != nil {
-				log.Printf("DB App Update Err: %v\n", updResp.Err)
-			}else{
-				fmt.Printf("mdUpdate done successfully")
-			}
-			CallerChan2  := make(chan model.UserDbResp)
-			h.sessionDBService.session.userDBChans.UpdateDbChan <-model.UserDbData{user.ID, user, CallerChan2}
-			updResp2 := <-CallerChan2
-			if updResp2.Err != nil {
-				log.Printf("DB User Update Err: %v\n", updResp2.Err)
-			}else{
-				fmt.Printf("userUpdate done successfully")
-			}
 		}
 	} else {
 		//store user, session and app
-		err = h.sessionDBService.session.userDBService.UpdateUser(user)
+		err = h.sessionDBService.session.userBoltDBService.UpdateUser(user)
 		if err != nil {
 			log.Printf("syncParams1 %v", err)
 			return h, err
@@ -1326,7 +1377,7 @@ func (h TradeHandler) syncParams(user *model.User, md *App, action string) (Trad
 			return h, err
 		}
 		if md != nil {
-			err = h.sessionDBService.session.appDBService.AddApp(md)
+			err = h.sessionDBService.session.appMemDBService.AddApp(md)
 			if err != nil {
 				log.Printf("syncParams6 %v", err)
 				return h, err

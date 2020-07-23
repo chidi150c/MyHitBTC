@@ -111,7 +111,7 @@ func (a *userBoltServ) UpdateUser(usr *model.User) error {
 		} else if err := internal.UnmarshalUser(v, musr); err != nil {
 			return err
 		}
-		if musr.ID == usr.ID && musr.Username == usr.Username {
+		if (musr.ID == usr.ID) && (musr.Username == usr.Username) {
 			// Marshal User data into bytes.
 			buf, err := internal.MarshalUser(usr)
 			if err != nil {
@@ -132,7 +132,7 @@ func (a *userBoltServ) AddUser(usr *model.User) (model.UserID, error) {
 		b := tx.Bucket([]byte("Users"))
 		if err := b.ForEach(func(k, v []byte) error {
 			if err := internal.UnmarshalUser(v, musr); err == nil {
-				if musr.ID == usr.ID || musr.Username == usr.Username {
+				if (musr.ID == usr.ID) && (musr.Username == usr.Username) {
 					usr.ID = musr.ID
 					return model.ErrUserExists
 				}
