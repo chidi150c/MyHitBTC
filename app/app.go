@@ -17,34 +17,35 @@ func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
 	)
 	//log.Printf("For %s: For %s: AdaptApp started with Main Quantity %.8f", md.Data.SymbolCode, w.user.Username, md.Data.MainQuantity)
 	if from == "" {
-		md.Chans.CloseDown = make(chan bool)
+		md.Chans.CloseDownAutoTradeChan = make(chan bool)
+		md.Chans.CloseDownWorkerChan = make(chan bool)
 		md.Chans.MessageChan = make(chan string, 1000)
 		md.Chans.SetParamChan = make(chan SetParam, 1)
 		md.Chans.ShutDownMessageChan = make(chan string)
 		md.Chans.PriceTradingNextStartChan = make(chan priceTradingVehicle, 1)
-		md.Chans.StopSellPriceTradingChan = make(chan bool)
+		md.Chans.CloseDownSellPriceTradingChan = make(chan bool)
 		md.Chans.MarketResetInfoChan = make(chan chan bool)
-		md.Chans.StopBuyPriceTradingChan = make(chan bool)
+		md.Chans.CloseDownBuyPriceTradingChan = make(chan bool)
 		md.Chans.CancelMyOrderChan = make(chan bool)
 		if md.FromVersionUpdate {
 			if md.Data.PriceTradingStarted == "buy" {
 				md.Data.Side = "sell"
-				if !isClosed(md.Chans.StopSellPriceTradingChan) {
-					close(md.Chans.StopSellPriceTradingChan)
+				if !isClosed(md.Chans.CloseDownSellPriceTradingChan) {
+					close(md.Chans.CloseDownSellPriceTradingChan)
 				}
-				md.Chans.StopBuyPriceTradingChan = make(chan bool)
+				md.Chans.CloseDownBuyPriceTradingChan = make(chan bool)
 				go w.priceTrading(md, "")
 			} else if md.Data.PriceTradingStarted == "sell" {
 				md.Data.Side = "buy"
-				if !isClosed(md.Chans.StopBuyPriceTradingChan) {
-					close(md.Chans.StopBuyPriceTradingChan)
+				if !isClosed(md.Chans.CloseDownBuyPriceTradingChan) {
+					close(md.Chans.CloseDownBuyPriceTradingChan)
 				}
-				md.Chans.StopSellPriceTradingChan = make(chan bool)
+				md.Chans.CloseDownSellPriceTradingChan = make(chan bool)
 				go w.priceTrading(md, "")
 			} else {
 				md.FromVersionUpdate = false
-				close(md.Chans.StopSellPriceTradingChan)
-				close(md.Chans.StopBuyPriceTradingChan)
+				close(md.Chans.CloseDownSellPriceTradingChan)
+				close(md.Chans.CloseDownBuyPriceTradingChan)
 			}
 			// md.Data.Hodler = "no"
 			// md.Data.TrailPoints =
@@ -62,8 +63,8 @@ func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
 			// md.Data.DisableTransaction = ""
 			return md, nil
 		} else {
-			close(md.Chans.StopSellPriceTradingChan)
-			close(md.Chans.StopBuyPriceTradingChan)
+			close(md.Chans.CloseDownSellPriceTradingChan)
+			close(md.Chans.CloseDownBuyPriceTradingChan)
 		}
 	}
 	var (
@@ -152,45 +153,45 @@ func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
 		md.Chans.SetParamChan <- SetParam{"", 0}
 	}
 	if from == "all" {
-		if !isClosed(md.Chans.StopBuyPriceTradingChan) {
-			close(md.Chans.StopBuyPriceTradingChan)
+		if !isClosed(md.Chans.CloseDownBuyPriceTradingChan) {
+			close(md.Chans.CloseDownBuyPriceTradingChan)
 		}
-		if !isClosed(md.Chans.StopSellPriceTradingChan) {
-			close(md.Chans.StopSellPriceTradingChan)
+		if !isClosed(md.Chans.CloseDownSellPriceTradingChan) {
+			close(md.Chans.CloseDownSellPriceTradingChan)
 		}
 		if base > md.Data.QuantityIncrement && err == nil {
 			md.Data.Side = "buy"
 			md.Data.MrktQuantity = base
 			md.Data.AlternateData = lastPrice
-			md.Chans.StopSellPriceTradingChan = make(chan bool)
+			md.Chans.CloseDownSellPriceTradingChan = make(chan bool)
 			go w.priceTrading(md, "")
 		}
 	} else if from == "buy" {
-		if !isClosed(md.Chans.StopBuyPriceTradingChan) {
-			close(md.Chans.StopBuyPriceTradingChan)
+		if !isClosed(md.Chans.CloseDownBuyPriceTradingChan) {
+			close(md.Chans.CloseDownBuyPriceTradingChan)
 		}
 		if base > md.Data.QuantityIncrement && err == nil {
-			if !isClosed(md.Chans.StopSellPriceTradingChan) {
-				close(md.Chans.StopSellPriceTradingChan)
+			if !isClosed(md.Chans.CloseDownSellPriceTradingChan) {
+				close(md.Chans.CloseDownSellPriceTradingChan)
 			}
 			md.Data.Side = "buy"
 			md.Data.MrktQuantity = base
 			md.Data.AlternateData = lastPrice
-			md.Chans.StopSellPriceTradingChan = make(chan bool)
+			md.Chans.CloseDownSellPriceTradingChan = make(chan bool)
 			go w.priceTrading(md, "")
 		}
 	} else if from == "sell" {
-		if !isClosed(md.Chans.StopSellPriceTradingChan) {
-			close(md.Chans.StopSellPriceTradingChan)
+		if !isClosed(md.Chans.CloseDownSellPriceTradingChan) {
+			close(md.Chans.CloseDownSellPriceTradingChan)
 		}
 		if JackportErr == nil {
-			if !isClosed(md.Chans.StopBuyPriceTradingChan) {
-				close(md.Chans.StopBuyPriceTradingChan)
+			if !isClosed(md.Chans.CloseDownBuyPriceTradingChan) {
+				close(md.Chans.CloseDownBuyPriceTradingChan)
 			}
 			md.Data.Side = "sell"
 			md.Data.MrktQuantity = floatHolder
 			md.Data.AlternateData = lastPrice
-			md.Chans.StopBuyPriceTradingChan = make(chan bool)
+			md.Chans.CloseDownBuyPriceTradingChan = make(chan bool)
 			go w.priceTrading(md, "")
 		} else {
 			md.Chans.MessageChan <- fmt.Sprintf("AdaptAppSell: %v", err)
@@ -200,7 +201,7 @@ func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
 			md.Data.Side = "buy"
 			md.Data.MrktQuantity = base
 			md.Data.AlternateData = lastPrice
-			md.Chans.StopSellPriceTradingChan = make(chan bool)
+			md.Chans.CloseDownSellPriceTradingChan = make(chan bool)
 			go w.priceTrading(md, "NeverSold")
 		}
 	}
@@ -212,12 +213,13 @@ func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
 
 type AppChan struct {
 	PriceTradingNextStartChan chan priceTradingVehicle
-	StopSellPriceTradingChan  chan bool
-	StopBuyPriceTradingChan   chan bool
+	CloseDownSellPriceTradingChan  chan bool
+	CloseDownBuyPriceTradingChan   chan bool
 	CancelMyOrderChan         chan bool
 	MarketResetInfoChan       chan chan bool
 	SetParamChan              chan SetParam
-	CloseDown                 chan bool
+	CloseDownAutoTradeChan                 chan bool
+	CloseDownWorkerChan                 chan bool
 	MyChan                    <-chan AppVehicle
 	MessageChan               chan string
 	ShutDownMessageChan       chan string

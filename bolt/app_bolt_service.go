@@ -49,6 +49,7 @@ func AppDataBoltDBServiceFunc(AppDataBoltDBChans model.ABDBChans, memAppDataChan
 			if err == nil {
 				dat.CallerChan <- model.AppDataResp{dat.AppData.ID, dat.AppData, nil}
 			} else {
+				log.Printf("BoltDB GET Error %v", err)
 				dat.CallerChan <- model.AppDataResp{Err: model.ErrInternal}
 			}
 		case dat = <-AppDataBoltDBChans.DeleteDbChan:

@@ -26,20 +26,24 @@ type Session struct {
 	appBoltDBService    AppBoltDBService 
 	userBoltDBChans   model.UDBChans
 	userBoltDBService   UserBoltDBService
+	marginCalDBChans  model.MCalDBChans
+	marginCalDBService   MarginCalDBService
 	workerAppService WorkerAppService
 	websocketUserService WebsocketUserService
 	websocketUSChans WUSChans
 }
 
-func NewSession(uchans model.UDBChans, abdbchans model.ABDBChans, mdchans MDDBChans, wuschans WUSChans) Session {
+func NewSession(uchans model.UDBChans, abdbchans model.ABDBChans, mdchans MDDBChans, wuschans WUSChans, mcalchans model.MCalDBChans) Session {
 	s := Session{
 		userBoltDBChans: uchans,
 		appBoltDBChans: abdbchans,
 		appMemDBChans:  mdchans,
-		websocketUSChans: wuschans,
+		websocketUSChans: wuschans,		
+		marginCalDBChans: mcalchans, 
 	}
 	s.userBoltDBService.session = &s
 	s.appBoltDBService.session = &s
+	s.marginCalDBService.session = &s
 	return s
 }
 

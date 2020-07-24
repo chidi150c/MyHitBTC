@@ -119,19 +119,3 @@ type AppDataOld struct {
 	ProfitPrice            float64
 	Pending                []float64
 }
-type ABDBChans struct {
-	AddDbChan    chan AppDataBoltVehicle
-	UpdateDbChan chan AppDataBoltVehicle
-	GetDbChan    chan AppDataBoltVehicle
-	DeleteDbChan chan AppDataBoltVehicle
-}
-type AppDataBoltVehicle struct {
-	AppID      AppID
-	AppData    *AppData
-	CallerChan chan AppDataResp
-}
-type AppDataResp struct {
-	AppID   AppID
-	AppData *AppData
-	Err     error
-}
