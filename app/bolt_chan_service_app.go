@@ -8,7 +8,6 @@ type AppBoltDBService struct {
 	session *Session
 }
 
-
 func (u *AppBoltDBService) AddApp(md *model.AppData) (model.AppID, error) {
 	CallerChan := make(chan model.AppDataResp)
 	u.session.appBoltDBChans.AddDbChan <- model.AppDataBoltVehicle{md.ID, md, CallerChan}

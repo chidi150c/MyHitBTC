@@ -2,21 +2,10 @@ package app
 
 import (
 	"errors"
-	"github.com/gorilla/websocket"
 	"myhitbtcv4/model"
 	//"log"
 )
 
-type WebsocketUSData struct{
-	socket *websocket.Conn
-	data *GetAppDataStringified
-	RespChan chan error
-}
-type WUSChans struct {
-	WriteSocketChan chan WebsocketUSData
-	ReadSocketChan chan WebsocketUSData
-	CloseSocketChan chan WebsocketUSData
-}
 func WebsocketUserServiceFunc(WebsocketUSChans WUSChans){
 	for{
 		select{

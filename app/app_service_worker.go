@@ -44,6 +44,7 @@ type WorkerAppService struct {
 	profitPriceOriginatorAChan chan ppPendingData
 	profitPriceResetAChan      chan bool
 	profitPriceOriginatorBChan chan ppPendingData
+	PriceTradingNextStartChan chan priceTradingVehicle
 	profitPriceResetBChan      chan bool
 }
 
@@ -232,7 +233,6 @@ func (w WorkerAppService) AutoTradeManager(md *App, marginChan chan model.Margin
 	}()
 	return mdChan, nil
 }
-
 //GetTradingBalance returns the trading balance in the trading account
 func (w WorkerAppService) GetTradingBalance(md *App) (baseCurrencyBalance float64, quoteCurrencyBalance float64, err error) {
 	var (
@@ -258,7 +258,6 @@ func (w WorkerAppService) GetTradingBalance(md *App) (baseCurrencyBalance float6
 	}
 	return baseCurrencyBalance, quoteCurrencyBalance, err
 }
-
 //AppShutDown for
 func (w WorkerAppService) AppShutDown(md *App) error {
 	user, err := w.session.Authenticate()
@@ -304,7 +303,6 @@ func (w WorkerAppService) waiting(t time.Duration, ch chan bool) {
 		}
 	}	
 }
-
 //ResetApp resetts some params of md to their default
 func (w WorkerAppService) ResetApp(md *App, rType string, sync chan bool) error {
 	var (
@@ -360,7 +358,6 @@ func (w WorkerAppService) ResetApp(md *App, rType string, sync chan bool) error 
 	sync <- true
 	return nil
 }
-
 //MarketTrading is a trading algorithm provided by the WorkerAppService
 func (w WorkerAppService) marketTrading(md *App) {
 	var (
@@ -826,7 +823,6 @@ func (w WorkerAppService) marketTrading(md *App) {
 		i = 0.0
 	} //end of forloop
 }
-
 //PriceTrading ...
 func (w WorkerAppService) priceTrading(md *App, toChange string) {
 	var (
@@ -1387,7 +1383,6 @@ func (w WorkerAppService) priceTrading(md *App, toChange string) {
 		}
 	}
 }
-
 //ProfitPriceAFunc ...
 func (w WorkerAppService) ProfitPriceAFunc(md *model.AppData, profitPriceReset chan bool, profitPriceOriginator chan ppPendingData) <-chan float64 {
 	profitPriceGen := make(chan float64)

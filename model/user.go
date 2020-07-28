@@ -1,17 +1,7 @@
 package model
 
-import (
-	"github.com/gorilla/websocket"
-)
-
 type UserID uint64
 
-
-//User is the person using the site
-type AppConn struct{
-	Conn *websocket.Conn
-	CloseAppSocketChan chan bool
-}
 type User struct {
 	ID            UserID
 	SessID        SessionID
@@ -60,4 +50,12 @@ type UserDbResp struct {
 	UserID UserID
 	User   *User
 	Err    error
+}
+
+type UserBoltDBServicer interface{
+	AddUser(user *User) error
+	GetUser(id UserID) (*User, error)
+	GetUserByName(usrname string) (*User, error)
+	UpdateUser(user *User) error
+	DeleteUser(id UserID) error
 }

@@ -11,7 +11,7 @@ import (
 )
 
 //NewApp is the constructor of the App struct
-func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
+func AdaptApp(w WorkerAppService, md *model.App, from string) (*model.App, error) {
 	var (
 		floatHolder float64
 	)
@@ -209,34 +209,6 @@ func AdaptApp(w WorkerAppService, md *App, from string) (*App, error) {
 	md.Data.NextMarketSellPoint = lastPrice * (1.0 + (md.Data.LeastProfitMargin * 4))
 
 	return md, nil
-}
-
-type AppChan struct {
-	PriceTradingNextStartChan chan priceTradingVehicle
-	CloseDownSellPriceTradingChan  chan bool
-	CloseDownBuyPriceTradingChan   chan bool
-	CancelMyOrderChan         chan bool
-	MarketResetInfoChan       chan chan bool
-	SetParamChan              chan SetParam
-	CloseDownAutoTradeChan                 chan bool
-	CloseDownWorkerChan                 chan bool
-	MyChan                    <-chan AppVehicle
-	MessageChan               chan string
-	ShutDownMessageChan       chan string
-}
-type App struct {
-	Data              *model.AppData
-	Chans             AppChan
-	FromVersionUpdate bool
-}
-
-type AppVehicle struct {
-	App      *App
-	RespChan chan bool
-}
-type SetParam struct {
-	Key   string
-	Value interface{}
 }
 
 type priceTradingVehicle struct {

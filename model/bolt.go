@@ -17,3 +17,10 @@ type AppDataResp struct {
 	AppData *AppData
 	Err     error
 }
+
+type AppBoltDBServicer interface{
+	AddApp(md *AppData) (AppID, error)
+	GetApp(id AppID) (*AppData, error)
+	UpdateApp(md *AppData) error
+	DeleteApp(id AppID) error
+}

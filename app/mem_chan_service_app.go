@@ -5,12 +5,6 @@ import (
 	"time"
 )
 
-type MDDBChans struct {
-	AddOrUpdateDbChan chan AppDbServiceVehicle
-	GetDbChan         chan AppDbServiceVehicle
-	DeleteDbChan      chan AppDbServiceVehicle
-}
-
 type AppDB map[model.AppID]*App
 
 func AppMemDBServiceFunc(AppMemDBChans MDDBChans, memAppDataChanChan chan chan *model.AppData) {
@@ -120,13 +114,4 @@ func (u *AppMemDBService) DeleteApp(id model.AppID) error {
 	}
 	return model.ErrAppNotFound
 }
-type AppDbServiceVehicle struct {
-	AppID      model.AppID
-	App        *App
-	CallerChan chan AppDbResp
-}
-type AppDbResp struct {
-	AppID model.AppID
-	App   *App
-	Err   error
-}
+

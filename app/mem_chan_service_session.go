@@ -3,6 +3,9 @@ package app
 import (
 	"log"
 	"myhitbtcv4/model"
+	"net/http"
+	//"sync"
+	"time"
 )
 
 type SDBChans struct {
@@ -49,7 +52,24 @@ func SessionMemDBServiceFunc(SessionMemDBChans SDBChans) {
 
 type SessionDBService struct {
 	sessionDBChans SDBChans
-	session        Session
+	session        model.Session
+}
+
+func NewSession(uchans model.UDBChans, abdbchans model.ABDBChans, mdchans MDDBChans, wuschans WUSChans, mcalchans model.MCalDBChans, schans SDBChans, sess Session) *SessionDBService {
+	s := model.Session{
+		UserBoltDBChans: uchans,
+		AppBoltDBChans: abdbchans,
+		AppMemDBChans:  mdchans,
+		WebsocketUSChans: wuschans,		
+		MarginCalDBChans: mcalchans, 
+	}
+	s.UserBoltDBService.session = &s
+	s.AppBoltDBService.session = &s
+	s.MarginCalDBService.session = &s
+	return &SessionDBService{
+		sessionDBChans: schans,
+		session:        s,
+	}
 }
 
 func (u *SessionDBService) AddSession(session *Session) error {
@@ -108,3 +128,80 @@ func (u *SessionDBService) DeleteSession(id model.SessionID) error {
 	}
 	return model.ErrSessionNotFound
 }
+func (u *SessionDBService) Authenticate() (*model.User, error) {
+	// Return user if already authenticated.
+	return u.session.Authenticate()
+}
+// deletes the cookie
+func (u *SessionDBService) logout(w http.ResponseWriter, r *http.Request) {
+	_, err := r.Cookie("Auth")
+	if err != nil {
+		return
+	}
+	deleteCookie := http.Cookie{Name: "Auth", Value: "none", Expires: time.Now()}
+	http.SetCookie(w, &deleteCookie)
+	return
+}
+//AlreadyLoggedIn is use to ensure user are properly authenticated before having access to handler resources
+func (u *SessionDBService) AlreadyLoggedIn(w http.ResponseWriter, r *http.Request) (*model.User, bool) {
+	cookie, err := r.Cookie("Auth")
+	if err != nil {
+		return nil, false
+	}
+	token, err := jwt.ParseWithClaims(cookie.Value, &claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("Unexpected signing method")
+		}
+		return []byte("sEcrEtPassWord!234"), nil
+	})
+	if err != nil {
+		return nil, false
+	}
+	if userClaims, ok := token.Claims.(*claims); ok && token.Valid {
+		user, err := u.session.userBoltDBService.GetUserByName(userClaims.Username)
+		if err == nil {
+			userSession, err := u.GetSession(user.SessID)
+			if err != nil {
+				log.Printf("AlreadyLoggedIn1 %v : SessID = %v user = %v\n", err, user.SessID, user)
+				panic("Unable to get User Session from DB")
+			}
+			u.session = *userSession
+			u.session.cachedUser = user
+			return user, true
+		}
+	}
+	return nil, false
+}
+
+type autoTradeData struct {
+	Host      string
+	PublicKey string
+	Secret    string
+	SymID     string
+}
+
+type dashboardTotalData struct {
+	totalBalance float64
+	totalProfit  float64
+}
+type dashboardSymData struct {
+	symBaseBalance  float64
+	symQuoteBalance float64
+	symBaseProfit   float64
+	symQuoteProfit  float64
+	dateStarted     time.Time
+	id              string
+}
+
+type SessionDbData struct {
+	SessionID  model.SessionID
+	Session    *Session
+	CallerChan chan SessionDbResp
+}
+
+type SessionDbResp struct {
+	SessionID model.SessionID
+	Session   *Session
+	Err       error
+}
+

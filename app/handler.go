@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-
-	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -52,23 +50,21 @@ type TradeHandler struct {
 	host             string
 	sessionDBService SessionDBService
 	uuidChan         chan string
-	marginDbChan     model.MCalDBChans
 	boltDbChans      model.ABDBChans
+	chatHandler		 http.Handler
 }
 
 //NewTradeHandler returns a new instance of *TradeHandler
-func NewTradeHandler(host string, uchans model.UDBChans, mdchans MDDBChans, schans SDBChans, wuschans WUSChans, abdbchans model.ABDBChans, uuidch chan string, mcalchans model.MCalDBChans) TradeHandler {
+func NewTradeHandler(chatHdler http.Handler, host string, sessDBS SessionDBService, abdbchans model.ABDBChans, uuidch chan string) TradeHandler {
 	h := TradeHandler{
-		mux:          chi.NewRouter(),
-		host:         host,
-		uuidChan:     uuidch,
-		boltDbChans:  abdbchans,
+		mux:         chi.NewRouter(),
+		host:        host,
+		uuidChan:    uuidch,
+		boltDbChans: abdbchans,
+		chatHandler: chatHdler,
 	}
-	s := NewSession(uchans, abdbchans, mdchans, wuschans, mcalchans)
-	h.sessionDBService = SessionDBService{
-		sessionDBChans: schans,
-		session:        s,
-	}
+	
+	h.sessionDBService = sessDBS
 	h.sessionDBService.session.cachedUser = &model.User{}
 	h.mux.Get("/signup", h.userSignUpHandler)
 	h.mux.Post("/signup", h.userSignUpHandler)
@@ -81,12 +77,16 @@ func NewTradeHandler(host string, uchans model.UDBChans, mdchans MDDBChans, scha
 	h.mux.Get("/getapplist", h.userGetAppListHandler)
 	h.mux.Get("/feeds/ws", h.userFeedsHandler)
 	h.mux.Get("/close", h.userCloseUserSocketHandler)
+	// h.mux.Get("/shutdownapp", h.userShutdownAppHandler)
+	// h.mux.Post("/shutdownapp", h.userShutdownAppHandler)
+	// h.mux.Get("/shutdownallapp", h.userShutdownAllAppHandler)
 	h.mux.Get("/deleteapp", h.userDeleteAppHandler)
 	h.mux.Post("/deleteapp", h.userDeleteAppHandler)
 	h.mux.Get("/deleteallapp", h.userDeleteAllAppHandler)
 	h.mux.Get("/newverwrite", h.newVerWriteHandler)
 	h.mux.Post("/mdupdate", h.mdUploadHandler)
 	h.mux.Get("/messagedownload", h.userMessageDownloadHandler)
+	h.mux.Get("/graphpoint", h.userGraphPointAppHandler)
 	h.mux.Get("/newverread", h.newVerReadHandler)
 	h.mux.Post("/deleteallapp", h.userDeleteAllAppHandler)
 	h.mux.Get("/resetapp", h.userResetAppHandler)
@@ -101,6 +101,8 @@ func NewTradeHandler(host string, uchans model.UDBChans, mdchans MDDBChans, scha
 func (h TradeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/webClient/asset/") {
 		http.StripPrefix("/webClient/asset/", http.FileServer(http.Dir("./webClient/asset/"))).ServeHTTP(w, r)
+	} else if strings.HasPrefix(r.URL.Path, "/chat") {
+		h.chatHandler.ServeHTTP(w, r)
 	} else {
 		h.mux.ServeHTTP(w, r)
 	}
@@ -280,24 +282,13 @@ func (h TradeHandler) newVerReadHandler(w http.ResponseWriter, r *http.Request) 
 					return
 				}
 				appMarginSendingChan := make(chan model.MarginParam)
-				mar := &model.MarginDBVeh{
-					ID:          md.Data.ID,
-					MPChan:       appMarginSendingChan,
-					User: user,
-					MCalDBRespChan:   make(chan model.MarginDBResp),
-				}
-				//log.Printf("Waiting to Register %s appMarginSendingChan to margin register", md.Data.SymbolCode)
-				err = h.sessionDBService.session.marginCalDBService.AddMar(mar)
-				if err != nil {
-					log.Printf("MarginDB Err: %v", err)
-					return
-				}
 				md.FromVersionUpdate = true
 				md.Chans.MyChan, err = h.sessionDBService.session.workerAppService.AutoTradeManager(md, appMarginSendingChan)
 				if err != nil {
 					log.Printf("newVerReadHandler2 %v\n", err)
 					return
 				}
+				md.Chans.MParamChan = appMarginSendingChan
 				h, err = h.syncParams(user, md, "addBolt")
 				if err != nil {
 					log.Printf("newVerReadHandler3 %v\n", err)
@@ -387,24 +378,13 @@ func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appMarginSendingChan := make(chan model.MarginParam)
-		mar := &model.MarginDBVeh{
-			ID:          md.Data.ID,
-			MPChan:       appMarginSendingChan,
-			User: user,
-			MCalDBRespChan:   make(chan model.MarginDBResp),
-		}
-		//log.Printf("Waiting to Register %s appMarginSendingChan to margin register", md.Data.SymbolCode)
-		err = h.sessionDBService.session.marginCalDBService.AddMar(mar)
-		if err != nil {
-			log.Printf("MarginDB Err: %v", err)
-			return
-		}
 		md.FromVersionUpdate = true
 		md.Chans.MyChan, err = h.sessionDBService.session.workerAppService.AutoTradeManager(md, appMarginSendingChan)
 		if err != nil {
 			log.Printf("newVerReadHandler2 %v\n", err)
 			return
 		}
+		md.Chans.MParamChan = appMarginSendingChan
 		h, err = h.syncParams(user, md, "addBolt")
 		if err != nil {
 			log.Printf("newVerReadHandler3 %v\n", err)
@@ -419,41 +399,10 @@ func (h TradeHandler) mdUploadHandler(w http.ResponseWriter, r *http.Request) {
 //indexHandler delivers the Home page to the user
 func (h TradeHandler) indexHandler(w http.ResponseWriter, r *http.Request) {
 	usr, _ := AlreadyLoggedIn(w, r, &h)
-	if err := indexTmpl.Execute(w, r, nil, usr); err != nil {
+	if err := indexTmpl.Execute(w, r, nil, usr, nil); err != nil {
 		log.Printf("indexHandler1 %v\n", err)
 		return
 	} //Prints ticker to webpage
-}
-
-//AlreadyLoggedIn is use to ensure user are properly authenticated before having access to handler resources
-func AlreadyLoggedIn(w http.ResponseWriter, r *http.Request, h *TradeHandler) (*model.User, bool) {
-	cookie, err := r.Cookie("Auth")
-	if err != nil {
-		return nil, false
-	}
-	token, err := jwt.ParseWithClaims(cookie.Value, &claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method")
-		}
-		return []byte("sEcrEtPassWord!234"), nil
-	})
-	if err != nil {
-		return nil, false
-	}
-	if userClaims, ok := token.Claims.(*claims); ok && token.Valid {
-		user, err := h.sessionDBService.session.userBoltDBService.GetUserByName(userClaims.Username)
-		if err == nil {
-			userSession, err := h.sessionDBService.GetSession(user.SessID)
-			if err != nil {
-				log.Printf("AlreadyLoggedIn1 %v : SessID = %v user = %v\n", err, user.SessID, user)
-				panic("Unable to get User Session from DB")
-			}
-			h.sessionDBService.session = *userSession
-			h.sessionDBService.session.cachedUser = user
-			return user, true
-		}
-	}
-	return nil, false
 }
 func (h TradeHandler) UserPowerUpHandler(uDBRCC chan chan *model.User, GetDbChan chan model.AppDataBoltVehicle) {
 	log.Printf("UserPowerUpHandler started")
@@ -498,23 +447,12 @@ func (h TradeHandler) UserPowerUpHandler(uDBRCC chan chan *model.User, GetDbChan
 				continue
 			}
 			appMarginSendingChan := make(chan model.MarginParam)
-			mar := &model.MarginDBVeh{
-				ID:          md.Data.ID,
-				MPChan:       appMarginSendingChan,
-				User: user,
-				MCalDBRespChan:   make(chan model.MarginDBResp),
-			}
-			//log.Printf("Waiting to Register %s appMarginSendingChan to margin register", md.Data.SymbolCode)
-			err = h.sessionDBService.session.marginCalDBService.AddMar(mar)
-			if err != nil {
-				log.Printf("MarginDB Err: %v", err)
-				return
-			}
 			md.Chans.MyChan, err = h.sessionDBService.session.workerAppService.AutoTradeManager(md, appMarginSendingChan)
 			if err != nil {
 				log.Printf("For %s: %s: Error %v\n", user.Username, md.Data.SymbolCode, err)
 				continue
 			}
+			md.Chans.MParamChan = appMarginSendingChan
 			h, err = h.syncParams(user, md, "updateBolt")
 			if err != nil {
 				log.Printf("For %s: %s: Error %v\n", user.Username, md.Data.SymbolCode, err)
@@ -576,7 +514,7 @@ func (h TradeHandler) userSignUpHandler(w http.ResponseWriter, r *http.Request) 
 		h.sessionDBService.session.SetToken(w, r, user.Username, user.ID, "/", user.Level)
 		return
 	}
-	if err := signupTmpl.Execute(w, r, nil, nil); err != nil {
+	if err := signupTmpl.Execute(w, r, nil, nil, nil); err != nil {
 		log.Printf("userSignUpHandler2 %v\n", err)
 		return
 	}
@@ -621,7 +559,7 @@ func (h TradeHandler) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 		h.sessionDBService.session.SetToken(w, r, dbResp.User.Username, dbResp.User.ID, "/", dbResp.User.Level)
 		return
 	}
-	if err := loginTmpl.Execute(w, r, nil, dbResp.User); err != nil {
+	if err := loginTmpl.Execute(w, r, nil, dbResp.User, nil); err != nil {
 		log.Printf("userLoginHandler1 %v\n", err)
 		return
 	}
@@ -676,7 +614,7 @@ func (h TradeHandler) userAddAppHandler(w http.ResponseWriter, r *http.Request) 
 					SymbolCode:    symbol,
 				}
 				//presenting a delete form to the user to confirm deletion
-				if err := deleteappTmpl.Execute(w, r, dat, user); err != nil {
+				if err := deleteappTmpl.Execute(w, r, dat, user, nil); err != nil {
 					log.Printf("userAddAppHandler1 %v\n", err)
 				}
 				return
@@ -729,23 +667,12 @@ func (h TradeHandler) userAddAppHandler(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			appMarginSendingChan := make(chan model.MarginParam)
-			mar := &model.MarginDBVeh{
-				ID:          md.Data.ID,
-				MPChan:       appMarginSendingChan,
-				User: user,
-				MCalDBRespChan:   make(chan model.MarginDBResp),
-			}
-			//log.Printf("Waiting to Register %s appMarginSendingChan to margin register", md.Data.SymbolCode)
-			err = h.sessionDBService.session.marginCalDBService.AddMar(mar)
-			if err != nil {
-				log.Printf("MarginDB Err: %v", err)
-				return
-			}
 			md.Chans.MyChan, err = h.sessionDBService.session.workerAppService.AutoTradeManager(md, appMarginSendingChan)
 			if err != nil {
 				log.Printf("userAddAppHandler4 %v\n", err)
 				return
 			}
+			md.Chans.MParamChan = appMarginSendingChan
 			h, err = h.syncParams(user, md, "add")
 			if err != nil {
 				log.Printf("userAddAppHandler5 %v\n", err)
@@ -755,7 +682,7 @@ func (h TradeHandler) userAddAppHandler(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
 		return
 	}
-	if err := addappTmpl.Execute(w, r, nil, user); err != nil {
+	if err := addappTmpl.Execute(w, r, nil, user, nil); err != nil {
 		log.Printf("userAddAppHandler6 %v\n", err)
 		return
 	}
@@ -768,40 +695,31 @@ func (h TradeHandler) userMarginAppHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	data := MarginData{}
-	// if len(user.ApIDs) == 0 {
-	// 	data.GrandMargin = fmt.Sprintf("%-8f", 0.0)
-	// 	if err := marginTmpl.Execute(w, r, data, user); err != nil {
-	// 		log.Printf("userMarginAppHandler1 %v\n", err)
-	// 		return
-	// 	}
-	// 	return
-	// }
-	// marginDbChan := make(chan MarginDB)
-	mar := &model.MarginDBVeh{
-		MPChan:       nil,
-		User: user,
-		MCalDBRespChan:   make(chan model.MarginDBResp),
+	mar := model.MarginDBVeh{
+		MPChan:         nil,
+		User:           user,
+		MCalDBRespChan: make(chan model.MarginDBResp),
 	}
 	GrandMargin := 0.0
-	Margins, err := h.sessionDBService.session.marginCalDBService.GetMar(mar)
-	if err != nil{
+	Margins, err := h.sessionDBService.session.marginCalDBService.GetMargin(mar)
+	if err != nil {
 		log.Printf("userMarginAppHandler1 %v\n", err)
-		return
-	}
-	for k, v := range Margins {
-		if k == user.ApIDs[v.SymbolCode] {
-			data.Margins = append(data.Margins, Margin{
-				SymbolCode:       v.SymbolCode,
-				SuccessfulOrders: fmt.Sprintf("%.8f", v.SuccessfulOrders),
-				MadeProfitOrders: fmt.Sprintf("%.8f", v.MadeProfitOrders),
-				MadeLostOrders:   fmt.Sprintf("%.8f", v.MadeLostOrders),
-				Value:            fmt.Sprintf("%.8f", v.Value),
-			})
-			GrandMargin += v.Value
+	}else{
+		for k, v := range Margins {
+			if k == user.ApIDs[v.SymbolCode] {
+				data.Margins = append(data.Margins, Margin{
+					SymbolCode:       v.SymbolCode,
+					SuccessfulOrders: fmt.Sprintf("%.8f", v.SuccessfulOrders),
+					MadeProfitOrders: fmt.Sprintf("%.8f", v.MadeProfitOrders),
+					MadeLostOrders:   fmt.Sprintf("%.8f", v.MadeLostOrders),
+					Value:            fmt.Sprintf("%.8f", v.Value),
+				})
+				GrandMargin += v.Value
+			}
 		}
 	}
 	data.GrandMargin = fmt.Sprintf("%-8f", GrandMargin)
-	if err := marginTmpl.Execute(w, r, data, user); err != nil {
+	if err := marginTmpl.Execute(w, r, data, user, nil); err != nil {
 		log.Printf("userMarginAppHandler1 %v\n", err)
 		return
 	}
@@ -888,7 +806,7 @@ func (h TradeHandler) userFeedsHandler(w http.ResponseWriter, r *http.Request) {
 	h.syncParams(user, nil, "update")
 	var dat AppVehicle
 	go func(user *model.User) {
-		defer log.Printf("For %s: Socket Ended\n", data.SymbolCode)
+		//defer log.Printf("For %s: Socket Ended\n", data.SymbolCode)
 		for {
 			select {
 			case <-time.After(time.Second * 65):
@@ -945,35 +863,6 @@ func (h TradeHandler) userCloseUserSocketHandler(w http.ResponseWriter, r *http.
 	}
 	http.Redirect(w, r, "/getapplist", http.StatusSeeOther)
 	return
-}
-
-//GetAppDataStringified ..
-type GetAppDataStringified struct {
-	Secret             string `json:"secret"`
-	PublicKey          string `json:"publickey"`
-	SymbolCode         string `json:"symbolcode"`
-	SuccessfulOrders   string `json:"successfulorders"`
-	MadeProfitOrders   string `json:"madeprofitorders"`
-	TotalProfit        string `json:"totalprofit"`
-	InstantProfit      string `json:"instantprofit"`
-	Message            string `json:"message"`
-	GoodBiz            string `json:"goodbiz"`
-	LeastProfitMargin  string `json:"leastprofitmargin"`
-	DisableTransaction string `json:"disabletransaction"`
-	QuantityIncrement  string `json:"quantityincrement"`
-	MessageFilter      string `json:"messagefilter"`
-	NeverBought        string `json:"neverbought"`
-	PendingA           string `json:"pendinga"`
-	PendingB           string `json:"pendingb"`
-	NeverSold          string `json:"neversold"`
-	StopLostPoint      string `json:"stoplostpoint"`
-	TrailPoints        string `json:"trailpoints"`
-	SureTradeFactor    string `json:"suretradefactor"`
-	TotalLost          string `json:"totallost"`
-	InstantLost        string `json:"instantlost"`
-	MadeLostOrders     string `json:"madelostorders"`
-	Hodler             string `json:"hodler"`
-	DeleteMessage      string `json:"deleteMessage"`
 }
 
 func (h TradeHandler) userEditAppHandler(w http.ResponseWriter, r *http.Request) {
@@ -1042,7 +931,7 @@ func (h TradeHandler) userEditAppHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := editappTmpl.Execute(w, r, data, user); err != nil {
+	if err := editappTmpl.Execute(w, r, data, user, nil); err != nil {
 		log.Printf("userEditAppHandler1 %v\n", err)
 	}
 	return
@@ -1099,25 +988,12 @@ func (h TradeHandler) userDeleteAllAppHandler(w http.ResponseWriter, r *http.Req
 				log.Printf("userDeleteAllAppHandler2.2 %v\n", err)
 				continue
 			}
-			// //Closing down websocket
-			// go func() {
-			// 	_ = h.sessionDBService.session.websocketUserService.CloseSocket(user, app.Data.SymbolCode)
-			// }()
+			//Closing down websocket
+			go func() {
+				_ = h.sessionDBService.session.websocketUserService.CloseSocket(user, app.Data.SymbolCode)
+			}()
 			//Deleting app chan from margin register
 			log.Printf("working on %s \n", app.Data.SymbolCode)
-			go func() {
-				mar := &model.MarginDBVeh{
-					ID:          app.Data.ID,
-					MPChan:       nil,
-					User: user,
-					MCalDBRespChan:   make(chan model.MarginDBResp),
-				}
-				err = h.sessionDBService.session.marginCalDBService.DeleteMar(mar)
-				if err != nil {
-					log.Printf("MarginDB Err: %v", err)
-					return
-				}
-			}()
 			//Shutting down app finally
 			go func() {
 				err = h.sessionDBService.session.workerAppService.AppShutDown(app)
@@ -1156,7 +1032,7 @@ func (h TradeHandler) userDeleteAllAppHandler(w http.ResponseWriter, r *http.Req
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	if err := deleteallappTmpl.Execute(w, r, GetAppDataStringified{SymbolCode: "All", DeleteMessage: "Are you sure you want to delete"}, user); err != nil {
+	if err := deleteallappTmpl.Execute(w, r, GetAppDataStringified{SymbolCode: "All", DeleteMessage: "Are you sure you want to delete"}, user, nil); err != nil {
 		log.Printf("userDeleteAllAppHandler6 %v\n", err)
 		return
 	}
@@ -1192,9 +1068,14 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 		}
 		//removing app id from user
 		delete(user.ApIDs, id)
+		h, err = h.syncParams(user, nil, "update")
+		if err != nil {
+			log.Printf("userDeleteAppHandler2 %v\n", err)
+			return
+		}
 		return
 	} else if err != nil {
-		log.Printf("userDeleteAllAppHandler2.2 %v\n", err)
+		log.Printf("userDeleteAppHandler2.2 %v\n", err)
 		return
 	}
 	h, err = h.syncParams(user, nil, "update")
@@ -1210,20 +1091,6 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 		//Closing down websocket
 		go func() {
 			_ = h.sessionDBService.session.websocketUserService.CloseSocket(user, id)
-		}()
-		//Deleting app chan from margin register
-		go func() {
-			mar := &model.MarginDBVeh{
-				ID:          app.Data.ID,
-				MPChan:       nil,
-				User: user,
-				MCalDBRespChan:   make(chan model.MarginDBResp),
-			}
-			err = h.sessionDBService.session.marginCalDBService.DeleteMar(mar)
-			if err != nil {
-				log.Printf("MarginDB Err: %v", err)
-				return
-			}
 		}()
 		//Shutting down app finally
 		err = h.sessionDBService.session.workerAppService.AppShutDown(app)
@@ -1253,7 +1120,7 @@ func (h TradeHandler) userDeleteAppHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	//Presents a confirmation form to the user's UI for the deleting which sends a POST form back to this handler for the deleting
-	if err := deleteappTmpl.Execute(w, r, dat, user); err != nil {
+	if err := deleteappTmpl.Execute(w, r, dat, user, nil); err != nil {
 		log.Printf("userDeleteAppHandler6 %v\n", err)
 		return
 	}
@@ -1266,6 +1133,11 @@ func (h TradeHandler) userMessageAppHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	http.ServeFile(w, r, "nohup.out")
+	return
+}
+func (h TradeHandler) userGraphPointAppHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	http.ServeFile(w, r, "./graph/graphPoint.json")
 	return
 }
 func (h TradeHandler) userGetAppListHandler(w http.ResponseWriter, r *http.Request) {
@@ -1283,7 +1155,7 @@ func (h TradeHandler) userGetAppListHandler(w http.ResponseWriter, r *http.Reque
 		sm.Symbols[i] = k
 		i++
 	}
-	if err := getapplistTmpl.Execute(w, r, sm, user); err != nil {
+	if err := getapplistTmpl.Execute(w, r, sm, user, nil); err != nil {
 		log.Printf("userGetAppListHandler1 %v\n", err)
 		return
 	}
@@ -1330,6 +1202,7 @@ func (h TradeHandler) syncParams(user *model.User, md *App, action string) (Trad
 	//initiallize app DB service
 	h.sessionDBService.session.appMemDBService.session = &h.sessionDBService.session
 	h.sessionDBService.session.appBoltDBService.session = &h.sessionDBService.session
+	h.sessionDBService.session.marginCalDBService.session = &h.sessionDBService.session
 	//initiallize user DB service
 	h.sessionDBService.session.userBoltDBService.session = &h.sessionDBService.session
 	//store user, session and app

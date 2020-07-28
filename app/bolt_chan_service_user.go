@@ -4,11 +4,9 @@ import (
 	//"log"
 	"myhitbtcv4/model"
 )
-
 type UserBoltDBService struct {
 	session *Session
 }
-
 func (u *UserBoltDBService) AddUser(user *model.User) error {
 	CallerChan := make(chan model.UserDbResp)
 	u.session.userBoltDBChans.AddDbChan <- model.UserDbData{user.ID, user, CallerChan}

@@ -1,18 +1,19 @@
 package main
 
 import (
+	"myhitbtcv4/chat"
+	"myhitbtcv4/graph"
 	//"myhitbtcv4/memory"
 	"myhitbtcv4/bolt"
 	//"myhitbtcv4/twilio"
 	"flag"
 	"log"
 	"myhitbtcv4/app"
-	"myhitbtcv4/margin"
 	"myhitbtcv4/model"
 	"os"
 )
 
-func initDB() (model.MCalDBChans, model.UDBChans, app.MDDBChans, app.SDBChans, app.WUSChans, model.ABDBChans) {
+func initDB() (model.UDBChans, app.MDDBChans, app.SDBChans, app.WUSChans, model.ABDBChans, model.MCalDBChans) {
 	return model.UDBChans{
 			AddDbChan:       make(chan model.UserDbData),
 			UpdateDbChan:    make(chan model.UserDbData),
@@ -37,9 +38,7 @@ func initDB() (model.MCalDBChans, model.UDBChans, app.MDDBChans, app.SDBChans, a
 			GetDbChan:    make(chan model.AppDataBoltVehicle),
 			DeleteDbChan: make(chan model.AppDataBoltVehicle),
 		}, model.MCalDBChans{
-			GetMarginCalDBChan: make(chan model.MarginDBVeh), //handler uses ths to get the margin DB
-			AddMarginCalDBChan: make(chan model.MarginDBVeh),  //handler uses this to register app margin chans
-			DeleteMarginCalDBChan: make(chan model.MarginDBVeh),
+			GetMarginDBChan: make(chan model.MarginDBVeh), //handler uses ths to get the margin DB
 		}
 }
 
@@ -59,7 +58,7 @@ func main() {
 	// tw := twilio.NewTwilioAPI("+" + "2349086790286")
 	//Starting the getTicker goroutine
 
-	MarginCalDBChans, UserBoltDBChans, AppMemDBChans, SessionMemDBChans, WebsocketUserChans, AppDataBoltDBChans := initDB()
+	UserBoltDBChans, AppMemDBChans, SessionMemDBChans, WebsocketUserChans, AppDataBoltDBChans, MarginCalDBChans := initDB()
 	memAppDataChanChan := make(chan chan *model.AppData)
 	uDBRCC := make(chan chan *model.User)
 	// UserBoltServiceFunc proveds boltDB user storege services and as access speed is not required for user read/write there is no memory data storage for user
@@ -70,10 +69,14 @@ func main() {
 	go app.AppMemDBServiceFunc(AppMemDBChans, memAppDataChanChan)
 	go app.SessionMemDBServiceFunc(SessionMemDBChans)
 	go app.WebsocketUserServiceFunc(WebsocketUserChans)
+	wGraphServ := graph.NewWorkerGraphService()
+	go wGraphServ.GraphPointGen()
+	go wGraphServ.GraphPopulation()
 	UUIDChan := make(chan string)
 	go app.RealtimeUUID(UUIDChan)
-	go margin.MarginCal(MarginCalDBChans)
-	h := app.NewTradeHandler(host, UserBoltDBChans, AppMemDBChans, SessionMemDBChans, WebsocketUserChans, AppDataBoltDBChans, UUIDChan, MarginCalDBChans) //Passes the session to initialize a new instance of appHandler
+	sessDBS := app.NewSession(UserBoltDBChans, AppDataBoltDBChans,AppMemDBChans, WebsocketUserChans, MarginCalDBChans, SessionMemDBChans, sess)
+	chatHdler := chat.NewChatHandler(sessDBS)
+	h := app.NewTradeHandler(chatHdler, host, sessDBS, AppDataBoltDBChans, UUIDChan) //Passes the session to initialize a new instance of appHandler
 	server := app.NewServer(addr, h)
 	h.UserPowerUpHandler(uDBRCC, AppDataBoltDBChans.GetDbChan)
 	//Start the webserver

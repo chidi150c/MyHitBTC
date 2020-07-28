@@ -33,48 +33,40 @@ func (c *Client) GetTicker(symbolCode string) (*Ticker, error) {
 	symbol, err := c.SesSion.getTicker(c.url+"/public/ticker/", symbolCode)
 	return symbol, err
 }
-
 func (c *Client) GetSymbols() (Symbols, error) {
 	//Get symbol
 	symbols, err := c.SesSion.getSymbols(c.url + "/public/symbol/")
 	return symbols, err
 }
-
 func (c *Client) GetOrderBook(symbolCode string) (*OrderBook, error) {
 	//Get symbol
 	orderbook, err := c.SesSion.getOrderBook(c.url+"/public/orderbook/", symbolCode)
 	return orderbook, err
 }
-
 func (c *Client) GetOrderBooks(symbolCode string) (OrderBooks, error) {
 	//Get symbol
 	orderbooks, err := c.SesSion.getOrderBooks(c.url+"/public/orderbook/", symbolCode)
 	return orderbooks, err
 }
-
 func (c *Client) GetAddress(symbolCode string) (*Address, error) {
 	//Get symbol
 	address, err := c.SesSion.getAddress(c.url+"/account/crypto/address/", symbolCode)
 	return address, err
 }
-
 func (c *Client) GetAccountBalances() (Balances, error) {
 	//Get symbol
 	balances, err := c.SesSion.getBalances(c.url + "/account/balance")
 	return balances, err
 }
-
 func (c *Client) GetTradingBalances() (Balances, error) {
 	//Get symbol
 	balances, err := c.SesSion.getBalances(c.url + "/trading/balance")
 	return balances, err
 }
-
 func (c *Client) Transfer(currencyCode, amount, toExchange string) (*TransferOk, error) {
 	transfer, err := c.SesSion.postTransfer(c.url+"/account/transfer", currencyCode, amount, toExchange)
 	return transfer, err
 }
-
 func (c *Client) NewOrder(clientOrderId, symbolCode, side, quantity, price string) (*Order, error) {
 	//"""Place an order."""
 	data := Order{ClientOrderId: clientOrderId, Symbol: symbolCode, Side: side, Quantity: quantity, Type: "limit"}

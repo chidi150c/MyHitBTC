@@ -1,4 +1,127 @@
-    <div>
-        <h1>Automatic Cryptocurrency Trading Platform</h1>
-        <p>This is a mock Implementation. Use the links above to select a transaction</p>
-    </div>
+    <!-- Sidebar/menu -->
+    <nav class="w3-sidebar w3-animate-left" style="width:220px; display:none; color:#f9f8f9!important;
+        background-color: #1a4213!important;" id="mySidebar"><br>  
+        <hr>
+        <a style="max-width: 56px; float: right;" href="#" class="w3-bar-item w3-display-container w3-button w3-padding-16 w3-red w3-center w3-hover-black" onclick="w3_close()" title="close menu"><i class="fa fa-remove fa-fw w3-center"></i></a>
+        <div class="w3-bar-block">    
+        <a href="" class="w3-bar-item w3-button w3-padding"><i class="fa fa-dashboard fa-fw"></i> DASHBOARD </a>
+        <a href="/exch/account" class="w3-bar-item w3-button w3-padding"><i class="fa fa-user fa-fw"></i> ACCOUNT </a>
+        <a href="/exch/market" class="w3-bar-item w3-button w3-padding"><i class="fa fa-bitcoin fa-fw"></i> BUY/SELL BTC </a>
+        <a href="/exch/wallet" class="w3-bar-item w3-button w3-padding w3-blue"><i class="fa fa-briefcase fa-fw"></i>  BTC WALLET</a>
+        <a href="/exch/transactions" class="w3-bar-item w3-button w3-padding"><i class="fa fa-spinner fa-spin"></i>  TRANSACTIONS </a>
+        <a href="/exch/support" class="w3-bar-item w3-button w3-padding"><i class="fa fa-support fa-fw"></i>  SUPPORT  </a>
+        <a href="#" class="w3-bar-item w3-button w3-padding"><i class="fa fa-bank fa-fw"></i>  General</a>
+        <a href="#" class="w3-bar-item w3-button w3-padding"><i class="fa fa-cog fa-fw"></i>  Settings</a>
+       
+        </div>
+    </nav>
+    <script>
+        // Toggle between showing and hiding the sidebar, and add overlay effect
+          function w3_open() {
+          document.getElementById("mySidebar").style.display = "block";
+              document.getElementById("sidemenu").style.display = "none";
+              document.getElementById("sidemenu2").style.display = "block";
+              document.getElementById("mySidebar").style.width = "220px";
+          document.getElementById("pageContent").style.marginLeft = "220px";
+        }	
+        function w3_close() {
+          document.getElementById("mySidebar").style.display = "none";
+          document.getElementById("sidemenu").style.display = "block";
+          document.getElementById("sidemenu2").style.display = "none";
+          document.getElementById("pageContent").style.marginLeft = "60px";
+        }
+    </script>
+    <div class="jumbotron hero">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-4 col-md-push-7 phone-preview">
+                    <div class="iphone-mockup"><img src="/webClient/asset/img/iphone.svg" class="device">
+                        <div class="screen"></div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-md-pull-3 get-it text-center">
+                    <h1>Bitcoin to Naira Exchange</h1>
+                    <p>Trade your bitcoin for naira and your naira for bitcoin</p>
+                    
+                     
+<!--              	<div class="text-center" style="width: 100%; margin: 0 auto;">-->
+              	
+              	
+               	<ul class="col-sm-4 col-sm-push-2">
+					<li style="color:#158CBA; text-align: center; list-style-type: none; background: rgba(0,0,0,0.4); border-radius:5px;"><strong>2,000,000 NGN</strong></li><br>
+					<li style="list-style-type: none"><a class="btn btn-primary btn-sm" role="button" href="#"> BUY BITCOIN NOW</a></li>
+														
+				</ul>
+               
+                            
+                <ul class="col-sm-4 col-sm-push-2">
+					<li style="color: #28B62C; text-align: center; list-style-type: none; background: rgba(0,0,0,0.4); border-radius:5px;"><strong>2,000,000 NGN</strong></li><br>
+					<li style="list-style-type: none;"><a class="btn btn-success btn-sm" role="button" href="#"> SELL BITCOIN NOW</a></li>
+														
+				</ul> 
+               
+                </div> 
+                                         
+                
+          
+                </div>
+                
+            </div>
+        </div>
+<!--    </div>-->
+    <section class="testimonials">
+        <h2 class="text-center">People Love It!</h2>
+        <blockquote>
+            <p>B2N is Secure, fast, reliable an very easy to use.</p>
+            <footer>Resoledge Tech Website</footer>
+        </blockquote>
+    </section>
+    <section class="features">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h2>Fantastic Features</h2>
+                    <p>Instantly Convert your Bitcoin to naira and your naira to bitcoin at a Very Low and Considerate Network fees. Simple user interface and standby customer support. Daily reports on bitcoin prices and more! </p>
+                </div>
+                <div class="col-md-6">
+                    <div class="row icon-features">
+                        <div class="col-xs-4 icon-feature"><i class="glyphicon glyphicon-fire"></i>
+                            <p>Secure </p>
+                        </div>
+                        <div class="col-xs-4 icon-feature"><i class="glyphicon glyphicon-piggy-bank"></i>
+                            <p>Saves You Money</p>
+                        </div>
+                        <div class="col-xs-4 icon-feature"><i class="glyphicon glyphicon-fire"></i>
+                            <p>Fire Proof</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <div class="footer-basic">
+    <footer>
+        <div class="social"><a href="#"><i class="icon ion-social-instagram"></i></a><a href="#"><i class="icon ion-social-snapchat"></i></a><a href="#"><i class="icon ion-social-twitter"></i></a><a href="#"><i class="icon ion-social-facebook"></i></a></div>
+        <ul class="list-inline">
+            <li><a href="#">BUY/SELL BTC</a></li>
+            <li><a href="#">BTC WALLET</a></li>
+            <li><a href="#">WITHDRAWAL</a></li>
+            <li><a href="#">DEPOSIT</a></li>
+            <li><a href="#">ABOUT US</a></li>
+        </ul>
+        <p class="copyright">Company Name © 2016</p>
+    </footer>
+</div>
+
+    <script src="/webClient/asset/js/jquery.min.js"></script>
+    <script src="/webClient/asset/bootstrap/js/bootstrap.min.js"></script>
+
+
+
+
+
+
+
+
+
